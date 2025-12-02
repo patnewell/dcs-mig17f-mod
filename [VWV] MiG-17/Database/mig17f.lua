@@ -1,3 +1,89 @@
+function n37(tbl)
+
+        tbl.category = CAT_GUN_MOUNT
+        tbl.name         = "N-37"
+        tbl.display_name        = "N-37"
+        tbl.supply       =
+        {
+                shells = {"N37_37x155_HEI_T", "N37_37x155_API_T"},
+                mixes  = {{1,1,1,2}},
+                count  = 40,
+        }
+        if tbl.mixes then
+           tbl.supply.mixes =  tbl.mixes
+           tbl.mixes        = nil
+        end
+        tbl.gun =
+        {
+                max_burst_length = 40,
+                rates                    = {400},
+                recoil_coeff     = 1,
+                barrels_count    = 1,
+        }
+        if tbl.rates then
+           tbl.gun.rates    =  tbl.rates
+           tbl.rates        = nil
+        end
+        tbl.ejector_pos                         = tbl.ejector_pos or {-0.4, -1.2, 0.18}
+        tbl.ejector_dir                         = tbl.ejector_dir or {0,3,0}
+        tbl.supply_position             = tbl.supply_position   or {0,  0.3, -0.3}
+        tbl.aft_gun_mount                       = false
+        tbl.effective_fire_distance = 1000
+        tbl.drop_cartridge                      = 203
+        tbl.muzzle_pos                          = {0,0,0}
+        tbl.azimuth_initial             = tbl.azimuth_initial    or 0
+        tbl.elevation_initial           = tbl.elevation_initial  or 0
+        if  tbl.effects == nil then
+                tbl.effects = {{ name = "FireEffect"     , arg           = tbl.effect_arg_number or 436 },
+                                           { name = "HeatEffectExt"  , shot_heat = 7.823, barrel_k = 0.462 * 2.7, body_k = 0.462 * 14.3 },
+                                           { name = "SmokeEffect"}}
+        end
+        return declare_weapon(tbl)
+end
+
+function nr23(tbl)
+
+        tbl.category = CAT_GUN_MOUNT
+        tbl.name         = "NR-23"
+        tbl.display_name        = "NR-23"
+        tbl.supply       =
+        {
+                shells = {"NR23_HEI_T", "NR23_API_T"},
+                mixes  = {{1,1,1,2}},
+                count  = 80,
+        }
+        if tbl.mixes then
+           tbl.supply.mixes =  tbl.mixes
+           tbl.mixes        = nil
+        end
+        tbl.gun =
+        {
+                max_burst_length = 80,
+                rates                    = {700},
+                recoil_coeff     = 1,
+                barrels_count    = 1,
+        }
+        if tbl.rates then
+           tbl.gun.rates    =  tbl.rates
+           tbl.rates        = nil
+        end
+        tbl.ejector_pos                         = tbl.ejector_pos or {-0.4, -1.2, 0.18}
+        tbl.ejector_dir                         = tbl.ejector_dir or {0,2,0}
+        tbl.supply_position             = tbl.supply_position   or {0,  0.3, -0.3}
+        tbl.aft_gun_mount                       = false
+        tbl.effective_fire_distance = 1000
+        tbl.drop_cartridge                      = 204
+        tbl.muzzle_pos                          = {0,0,0}
+        tbl.azimuth_initial             = tbl.azimuth_initial    or 0
+        tbl.elevation_initial           = tbl.elevation_initial  or 0
+        if  tbl.effects == nil then
+                tbl.effects = {{ name = "FireEffect"     , arg           = tbl.effect_arg_number or 436 },
+                                           { name = "HeatEffectExt"  , shot_heat = 7.823, barrel_k = 0.462 * 2.7, body_k = 0.462 * 14.3 },
+                                           { name = "SmokeEffect"}}
+        end
+        return declare_weapon(tbl)
+end
+
 local vwv_mig17f = {
 
     Name = 'vwv_mig17f', -- AG
@@ -29,20 +115,20 @@ local vwv_mig17f = {
     mapclasskey = "P0091000024",
     attribute = {
         wsType_Air, wsType_Airplane, wsType_Fighter, WSTYPE_PLACEHOLDER,
-        "Fighters", "Datalink", "Link16"
+        "Fighters"
     },
     Categories = {"{78EFB7A2-FD52-4b57-A6A6-3BF0E1D6555F}", "Interceptor"},
 
-    M_empty = 3798, -- kg  with pilot and nose load, F15
-    M_nominal = 5340, -- kg (Empty Plus Full Internal Fuel)
-    M_max = 6072, -- kg (Maximum Take Off Weight)
+    M_empty = 3920, -- kg  with pilot and nose load
+    M_nominal = 5345, -- kg (Empty Plus Full Internal Fuel)
+    M_max = 6075, -- kg (Maximum Take Off Weight)
     M_fuel_max = 1140, -- kg (Internal Fuel Only)
     H_max = 18000, -- m  (Maximum Operational Ceiling)
     average_fuel_consumption = 0.150,
-    CAS_min = 70, -- Minimum CAS speed (m/s) (for AI)
-    V_opt = 170, -- Cruise speed (m/s) (for AI)
-    V_take_off = 76, -- Take off speed in m/s (for AI)
-    V_land = 76, -- Land speed in m/s (for AI)
+    CAS_min = 50, -- Minimum CAS speed (m/s) (for AI)
+    V_opt = 850 / 3.6, -- Cruise speed (m/s) (for AI)
+    V_take_off = 63, -- Take off speed in m/s (for AI)
+    V_land = 78, -- Land speed in m/s (for AI)
     has_afteburner = true,
     has_speedbrake = true,
     radar_can_see_ground = true,
@@ -61,29 +147,29 @@ local vwv_mig17f = {
     main_gear_amortizer_normal_weight_stroke = 0, -- down from main_gear_pos
     main_gear_wheel_diameter = 0.972, -- in m
 
-    AOA_take_off = 0.16, -- AoA in take off (for AI)
+    AOA_take_off = 0.17, -- AoA in take off (for AI)
     stores_number = 9,
     bank_angle_max = 75, -- Max bank angle (for AI)
     Ny_min = -3, -- Min G (for AI)
     Ny_max = 8, -- Max G (for AI)
-    V_max_sea_level = 308, -- Max speed at sea level in m/s (for AI)
-    V_max_h = 315, -- Max speed at max altitude in m/s (for AI)
+    V_max_sea_level = 1115 / 3.6, -- Max speed at sea level in m/s (for AI)
+    V_max_h = 1145 / 3.6, -- Max speed at max altitude in m/s (for AI)
     wing_area = 22.6, -- wing area in m2
-    thrust_sum_max = 2540, -- thrust in kgf (24.9 kN)
-    thrust_sum_ab = 3200, -- thrust in kgf (31.4 kN)
-    Vy_max = 65, -- Max climb speed in m/s (for AI)
+    thrust_sum_max = 2650, -- thrust in kgf (26.5 kN)
+    thrust_sum_ab = 3380, -- thrust in kgf (33.8 kN)
+    Vy_max = 60, -- Max climb speed in m/s (for AI)
     flaps_maneuver = 0.5,
-    Mach_max = 0.93, -- Max speed in Mach (for AI)
-    range = 2080, -- Max range in km (for AI)
+    Mach_max = 0.95, -- Max speed in Mach (for AI)
+    range = 1300, -- Max range in km (for AI)
     RCS = 2, -- Radar Cross Section m2
-    Ny_max_e = 9, -- Max G (for AI)
+    Ny_max_e = 8, -- Max G (for AI)
     detection_range_max = 250,
-    IR_emission_coeff = 0.91, -- Normal engine -- IR_emission_coeff = 1 is Su-27 without afterburner. It is reference.
-    IR_emission_coeff_ab = 4, -- With afterburner
+    IR_emission_coeff = 0.30, -- Normal engine -- IR_emission_coeff = 1 is Su-27 without afterburner. It is reference.
+    IR_emission_coeff_ab = 0.45, -- With afterburner
     tand_gear_max = 3.73, -- XX  1.732 FA18 3.73, 
     tanker_type = 0, -- F14=2/S33=4/ M29=0/S27=0/F15=1/ F16=1/To=0/F18=2/A10A=1/ M29K=4/F4=0/
     wing_span = 9.628, -- XX  wing spain in m
-    wing_type = 1, -- 0=FIXED_WING/ 1=VARIABLE_GEOMETRY/ 2=FOLDED_WING/ 3=ARIABLE_GEOMETRY_FOLDED
+    wing_type = 0, -- 0=FIXED_WING/ 1=VARIABLE_GEOMETRY/ 2=FOLDED_WING/ 3=ARIABLE_GEOMETRY_FOLDED
     length = 11.09,
     height = 3.80,
     crew_size = 1, -- XX
@@ -91,8 +177,7 @@ local vwv_mig17f = {
     wing_tip_pos = {-4.207, -0.086, 5.782},
 
     -- EPLRS 						= true,--?
-    TACAN_AA = true, -- ?
-    launch_bar_connected_arg_value = 0.815, -- 0.885,--0.745
+    TACAN_AA = false, -- ?
 
     mechanimations = {
         Door0 = {
@@ -110,17 +195,6 @@ local vwv_mig17f = {
                 Sequence = {{C = {{"JettisonCanopy", 0}}}}
             }
         },
-        FoldableWings = {
-            {
-                Transition = {"Retract", "Extend"},
-                Sequence = {{C = {{"Arg", 8, "to", 0.0, "in", 5.0}}}},
-                Flags = {"Reversible"}
-            }, {
-                Transition = {"Extend", "Retract"},
-                Sequence = {{C = {{"Arg", 8, "to", 1.0, "in", 5.0}}}},
-                Flags = {"Reversible", "StepsBackwards"}
-            }
-        },
         ServiceHatches = { -- Parkposition
             {
                 Transition = {"Close", "Open"},
@@ -135,101 +209,12 @@ local vwv_mig17f = {
                     {C = {{"Arg", 24, "set", 0.0}}}
                 }
             }
-        },
-        LaunchBar = {
-            {
-                Transition = {"Retract", "Extend"},
-                Sequence = {
-                    {
-                        C = {
-                            {"ChangeDriveTo", "HydraulicGravityAssisted"},
-                            {"VelType", 3}, {"Arg", 85, "to", 0.881, "in", 4.4}
-                        }
-                    }
-                }
-            }, {
-                Transition = {"Retract", "Stage"},
-                Sequence = {
-                    {
-                        C = {
-                            {"ChangeDriveTo", "HydraulicGravityAssisted"},
-                            {"VelType", 3}, {"Arg", 85, "to", 0.815, "in", 4.4}
-                        }
-                    }
-                }
-            }, {
-                Transition = {"Any", "Retract"},
-                Sequence = {
-                    {
-                        C = {
-                            {"ChangeDriveTo", "Hydraulic"}, {"VelType", 2},
-                            {"Arg", 85, "to", 0.000, "in", 4.5}
-                        }
-                    }
-                }
-            }, {
-                Transition = {"Extend", "Stage"},
-                Sequence = {
-                    {
-                        C = {
-                            {"ChangeDriveTo", "Mechanical"},
-                            {"Sleep", "for", 0.000}
-                        }
-                    },
-                    {C = {{"Arg", 85, "from", 0.881, "to", 0.766, "in", 0.600}}},
-                    {C = {{"Arg", 85, "from", 0.766, "to", 0.753, "in", 0.300}}},
-                    {C = {{"Sleep", "for", 0.45}}},
-                    {
-                        C = {
-                            {
-                                "Arg", 85, "from", 0.753, "to", 0.784, "in",
-                                0.1, "sign", 2
-                            }
-                        }
-                    },
-                    {C = {{"Arg", 85, "from", 0.784, "to", 0.881, "in", 1.0}}}
-                }
-            }, {
-                Transition = {"Stage", "Pull"},
-                Sequence = {
-                    {
-                        C = {
-                            {"ChangeDriveTo", "Mechanical"}, {"VelType", 2},
-                            {
-                                "Arg", 85, "from", 0.881, "to",
-                                launch_bar_connected_arg_value_, "in", 0.15
-                            }
-                        }
-                    }, {
-                        C = {
-                            {"ChangeDriveTo", "Mechanical"}, {"VelType", 2},
-                            {"Arg", 85, "to", 0.78, "speed", 0.1}
-                        }
-                    }, {
-                        C = {
-                            {"ChangeDriveTo", "Mechanical"}, {"VelType", 2},
-                            {"Arg", 85, "to", 0.7792, "speed", 0.02}
-                        }
-                    }
-                }
-            }, {
-                Transition = {"Stage", "Extend"},
-                Sequence = {
-                    {
-                        C = {
-                            {"ChangeDriveTo", "HydraulicGravityAssisted"},
-                            {"VelType", 3},
-                            {"Arg", 85, "from", 0.815, "to", 0.881, "in", 0.2}
-                        }
-                    }
-                }
-            }
         }
-    }, -- end of mechanimations
+    },
 
     engines_nozzles = {
         [1] = {
-            pos = {-7.100, 0.10, 0.00},
+            pos = {-7.10, -0.06, 0.00},
             elevation = -2.8, -- 3.7
             diameter = 0.965, -- 0.965
             exhaust_length_ab = 5.5,
@@ -269,17 +254,11 @@ local vwv_mig17f = {
 --        }
 --    },
 
-    chaff_flare_dispenser = {
-        [1] = {dir = {0, 1, 0}, pos = {-5.776, 1.4, -0.422}}, -- end of [1]
-        [2] = {dir = {0, 1, 0}, pos = {-5.776, 1.4, 0.422}} -- end of [2]
-    }, -- end of chaff_flare_dispenser
-
-    -- Countermeasures
     passivCounterm = {
-        CMDS_Edit = true,
-        SingleChargeTotal = 96,
-        chaff = {default = 48, increment = 24, chargeSz = 1},
-        flare = {default = 48, increment = 24, chargeSz = 1}
+        CMDS_Edit = false,
+        SingleChargeTotal = 0,
+        chaff = {default = 0},
+        flare = {default = 0}
     },
 
     CanopyGeometry = {
@@ -287,7 +266,7 @@ local vwv_mig17f = {
         elevation = {-50.0, 90.0} -- pilot view vertical (AI)
     },
 
-    Sensors = {RADAR = "N-011M", IRST = "OLS-27", RWR = "Abstract RWR"},
+    Sensors = {},
 
     Failures = {
         {
@@ -392,148 +371,121 @@ local vwv_mig17f = {
     },
 
     Guns = {
-
-        gun_mount("GSh_23_2", {count = 250}, {muzzle_pos = {2.00, -0.550, -0.5}}),
-        gun_mount("GSh_23_2", {count = 250}, {muzzle_pos = {1.85, -0.650, -0.3}}),
-        gun_mount("M_39", {count = 250}, {muzzle_pos = {1.95, -0.60, 0.40}})
-
+        n37({muzzle_pos = {2.00, -0.55, 0.00}, effect_arg_number = 350}),
+        nr23({muzzle_pos = {1.85, -0.65, -0.35}, effect_arg_number = 433}),
+        nr23({muzzle_pos = {1.95, -0.60, 0.35}, effect_arg_number = 432})
     },
     -------------------------------------------------------------------------------
     Pylons = {
         pylon(1, 0, 1.2, 2.50, -1.60,
             {use_full_connector_position = false, connector = "pylon_1"}, {
-				{CLSID = "FAB_50"},
-				{CLSID = "{3C612111-C7AD-476E-8A8E-2485812F4E5C}"}, -- FAB-250
-				{CLSID = "B_8V20A_CM"}, -- B-8V20A - 20 S-8TsM
-				{CLSID = "B_8V20A_OM"}, -- B-8V20A - 20 S-8OM
-				{CLSID = "B-8M1 - 20 S-8OFP2"}, -- B-8M1 - 20 S-8OFP2
-				{CLSID = "B-8V20A - 20 S-8OFP2"}, -- B-8V20A - 20 S-8OFP2
-				{CLSID = "FAB_100M"},
-				{CLSID = "{05544F1A-C39C-466b-BC37-5BD1D52E57BB}"}, -- UPK-23-250
-				-- {CLSID = "CATM-9M"} -- CATM-9M
-        }), pylon(2, 0, 1.2, 2.40, -1.75,
+                { CLSID = "FAB_50" },
+                { CLSID = "FAB_100M" },
+                { CLSID = "PTB400_MIG15" },
+        }),
+        pylon(2, 0, 1.2, 2.40, -1.75,
             {use_full_connector_position = false, connector = "pylon_2"}, {
-				{CLSID = "FAB_50"},
-				{CLSID = "{3C612111-C7AD-476E-8A8E-2485812F4E5C}"}, -- FAB-250
-				{CLSID = "B_8V20A_CM"}, -- B-8V20A - 20 S-8TsM
-				{CLSID = "B_8V20A_OM"}, -- B-8V20A - 20 S-8OM
-				{CLSID = "B-8M1 - 20 S-8OFP2"}, -- B-8M1 - 20 S-8OFP2
-				{CLSID = "B-8V20A - 20 S-8OFP2"}, -- B-8V20A - 20 S-8OFP2
-				{CLSID = "FAB_100M"},
-				{CLSID = "{05544F1A-C39C-466b-BC37-5BD1D52E57BB}"}, -- UPK-23-250
-				-- {CLSID = "CATM-9M"} -- CATM-9M
-
-        }), pylon(3, 0, 0.00, 0.00, 0.000,
-            {use_full_connector_position = false, connector = "pylon_3"}, {
-                { CLSID = "PTB400_MIG15" ,attach_point_position = {0.00, 0.25 ,0 }},
-        }), pylon(4, 0, 0.00, 0.00, 0.00,
-            {use_full_connector_position = false, connector = "pylon_4"}, {
-                { CLSID = "PTB400_MIG15" ,attach_point_position = {0.00, 0.25 ,0 }},
-        })
+                { CLSID = "FAB_50" },
+                { CLSID = "FAB_100M" },
+                { CLSID = "PTB400_MIG15" },
+        }),
     },
 
     ------------------------------------------------------------------------------
 
     Tasks = {
         aircraft_task(CAP),
-		aircraft_task(Escort),
-		aircraft_task(FighterSweep),
+        aircraft_task(Escort),
+        aircraft_task(FighterSweep),
         aircraft_task(Intercept),
-		aircraft_task(Reconnaissance),
         aircraft_task(GroundAttack),
-		aircraft_task(CAS),
-		aircraft_task(AFAC),
+        aircraft_task(CAS),
         aircraft_task(RunwayAttack),
-        aircraft_task(AntishipStrike),
     },
     DefaultTask = aircraft_task(CAP),
 
-    -- Based on the MiG-15 SFM
     SFM_Data = {
-		aerodynamics = -- Cx = Cx_0 + Cy^2*B2 +Cy^4*B4
-		{
-			Cy0	=	0.0668, -- zero AoA lift coefficient*
-			Mzalfa	=	4.355, -- coefficients for pitch agility
-			Mzalfadt	=	0.8,  -- coefficients for pitch agility
-			kjx	=	2,--2.3, -- Inertia parametre X - Dimension (clean) airframe drag coefficient at X (Top) Simply the wing area in square meters (as that is a major factor in drag calculations)
-			kjz	=	0.01,--0.0011, -- Inertia parametre Z - Dimension (clean) airframe drag coefficient at Z (Front) Simply the wing area in square meters (as that is a major factor in drag calculations)
-			Czbe	=	-0.014, -- coefficient, along Z axis (perpendicular), affects yaw, negative value means force orientation in FC coordinate system
-			cx_gear	=	0.02, -- coefficient, drag, gear ??
-			cx_flap	=	0.06, -- coefficient, drag, full flaps
-			cy_flap	=	0.35, -- coefficient, normal force, lift, flaps
-			cx_brk	=	0.026, -- coefficient, drag, breaks
-            -- Reduced Omxmax by 0.1 to 0.2 up to M 0.7
-			table_data = 
-			{	--      M		Cx0*	 	Cya*		B2		 	B4	 		Omxmax		Aldop*		Cymax*
-				{ 0.0,	0.018	,	0.067	,	0.074	,	0.01 	,	0.272	,	17.3	,	1.1},		
-				{ 0.1,	0.018	,	0.067	,	0.074	,	0.01 	,	0.272	,	17.3	,	1.1},
-				{ 0.2,	0.0172	,	0.067	,	0.074	,	0.01	,	0.641	,	17.3	,	1.1},
-				{ 0.3,	0.0165	,	0.067	,	0.074	,	0.01    ,	0.989	,	17.3	,	1.1},
-				{ 0.4,	0.016	,	0.0682	,	0.074	,	0.01  	,	1.289	,	17.3	,	1.1},
-				{ 0.5,	0.016	,	0.0708	,	0.074	,	0.01 	,	1.289	,	16.9	,	1.075},
-				{ 0.6,	0.016	,	0.0746	,	0.074	,	0.01 	,	1.008	,	16.2	,	1.031},
-				{ 0.7,	0.016	,	0.0798	,	0.074	,	0.01 	,	0.175	,	15.3	,	0.974},
-				{ 0.8,	0.0168	,	0.0850	,	0.08 	,	0.01 	,	0.103	,	13.9	,	0.882},
-				{ 0.86,	0.018	,	0.0822	,	0.082	,	0.11		,	0.028	,	12.8	,	0.815},
-				{ 0.9,	0.0232	,	0.076	,	0.088	,	0.36 	,	0.008   ,	11.6	,	0.737},
-				{ 0.94,	0.0402	,	0.0737	,	0.125	,	0.43	   ,	0.006	,	9.8	,	0.625},
-				{ 1,	    0.0598	,	0.0735	,	0.15 	,	0.56   	,	0.004	,	8	,	0.511},
-				{ 1.04,	0.063	,	0.0744	,	0.23 	,	0.84 	,	0.002	,	7.4	,	0.469},
-				{ 1.2,	0.0642	,	0.0760	,	0.26 	,	1   	,	0.001 	,	6.7	,	0.425},
-			}, -- end of table_data
-			-- M - Mach number
-			-- Cx0 - Coefficient, drag, profile, of the airplane
-			-- Cya - Normal force coefficient of the wing and body of the aircraft in the normal direction to that of flight. Inversely proportional to the available G-loading at any Mach value. (lower the Cya value, higher G available) per 1 degree AOA
-			-- B2 - Polar 2nd power coeff
-			-- B4 - Polar 4th power coeff
-			-- Omxmax - roll rate, rad/s
-			-- Aldop - Alfadop Max AOA at current M - departure threshold
-			-- Cymax - Coefficient, lift, maximum possible (ignores other calculations if current Cy > Cymax)
-		}, -- end of aerodynamics
-		engine = 
-		{
+        aerodynamics = -- Cx = Cx_0 + Cy^2*B2 +Cy^4*B4
+        {
+                        -- Tuned for MiG-17F VK-1F performance (higher sweep/all-moving tail versus MiG-15)
+                        Cy0     =       0.0712, -- zero AoA lift coefficient*
+                        Mzalfa  =       4.32, -- coefficients for pitch agility
+                        Mzalfadt        =       0.87,  -- coefficients for pitch agility
+                        kjx     =       2.08, -- Inertia parameter X
+                        kjz     =       0.0115, -- Inertia parameter Z
+                        Czbe    =       -0.014, -- coefficient, along Z axis (perpendicular)
+                        cx_gear =       0.02, -- coefficient, drag, gear ??
+                        cx_flap =       0.06, -- coefficient, drag, full flaps
+                        cy_flap =       0.35, -- coefficient, normal force, lift, flaps
+                        cx_brk  =       0.026, -- coefficient, drag, breaks
+                        table_data =
+                        {       --  M    Cx0*           Cya*            B2                      B4                      Omxmax Aldop*           Cymax*
+                                { 0.0,  0.0162  ,       0.0715 ,       0.072   ,       0.010   ,       0.460   ,       18.4   ,      1.16},
+                                { 0.1,  0.0162  ,       0.0715 ,       0.072   ,       0.010   ,       0.460   ,       18.4   ,      1.16},
+                                { 0.2,  0.0158  ,       0.0710 ,       0.072   ,       0.011   ,       0.860   ,       18.2   ,      1.15},
+                                { 0.3,  0.0152  ,       0.0718 ,       0.073   ,       0.014   ,       1.200   ,       18.0   ,      1.14},
+                                { 0.4,  0.0149  ,       0.0735 ,       0.075   ,       0.018   ,       1.580   ,       17.5   ,      1.12},
+                                { 0.5,  0.0149  ,       0.0765 ,       0.078   ,       0.022   ,       1.780   ,       17.1   ,      1.10},
+                                { 0.6,  0.0151  ,       0.0810 ,       0.081   ,       0.028   ,       1.620   ,       16.4   ,      1.06},
+                                { 0.7,  0.0156  ,       0.0855 ,       0.086   ,       0.046   ,       1.050   ,       15.6   ,      1.01},
+                                { 0.8,  0.0174  ,       0.0895 ,       0.093   ,       0.078   ,       0.520   ,       14.3   ,      0.96},
+                                { 0.86, 0.0192  ,       0.0860 ,       0.106   ,       0.130   ,       0.380   ,       13.4   ,      0.91},
+                                { 0.9,  0.0255  ,       0.0805 ,       0.124   ,       0.235   ,       0.320   ,       12.2   ,      0.86},
+                                { 0.94, 0.0395  ,       0.0775 ,       0.152   ,       0.360   ,       0.280   ,       11.0   ,      0.80},
+                                { 1.0,  0.0580  ,       0.0765 ,       0.190   ,       0.500   ,       0.230   ,       9.4    ,      0.74},
+                                { 1.04, 0.0610  ,       0.0770 ,       0.225   ,       0.670   ,       0.210   ,       8.7    ,      0.72},
+                                { 1.2,  0.0625  ,       0.0785 ,       0.255   ,       0.890   ,       0.190   ,       8.0    ,      0.68},
+                        }, -- end of table_data
+                        -- M - Mach number
+                        -- Cx0 - Coefficient, drag, profile, of the airplane
+                        -- Cya - Normal force coefficient of the wing and body of the aircraft in the normal direction to that of flight. Inversely proportional to the available G-loading at any Mach value. (lower the Cya value, higher G available) per 1 degree AOA
+                        -- B2 - Polar 2nd power coeff
+                        -- B4 - Polar 4th power coeff
+                        -- Omxmax - roll rate, rad/s
+                        -- Aldop - Alfadop Max AOA at current M - departure threshold
+                        -- Cymax - Coefficient, lift, maximum possible (ignores other calculations if current Cy > Cymax)
+                }, -- end of aerodynamics
+                engine =
+                {
             Nominal_RPM = 11600.0,
-			Nmg	=	21.5, -- RPM at idle
+                        Nmg     =       21.5, -- RPM at idle
             Startup_Prework = 28.0,
             Startup_Duration = 21.0,
             Shutdown_Duration = 62.0,
-			MinRUD	=	0, -- Min state of the РУД
-			MaxRUD	=	1, -- Max state of the РУД
-			MaksRUD	=	1, -- Military power state of the РУД
-			ForsRUD	=	1, -- Afterburner state of the РУД
-			type	=	"TurboJet",
-			hMaxEng	=	19, -- Max altitude for safe engine operation in km
-			dcx_eng	=	0.0134, -- Engine drag coeficient
-			cemax	=	1.24, -- not used for fuel calulation , only for AI routines to check flight time ( fuel calculation algorithm is built in )
-			cefor	=	2.56, -- not used for fuel calulation , only for AI routines to check flight time ( fuel calculation algorithm is built in )
-			dpdh_m	=	1340, --  altitude coefficient for max thrust
-			dpdh_f	=	1340, --  altitude coefficient for AB thrust
-            -- add 2000 to Pmax and Pfor
-			table_data = 
-			{		--   M			Pmax		 Pfor	
-				{ 0.0	,	26600	,	33250	},
-				{ 0.1	,	26600	,	33250	},
-				{ 0.2	,	25110	,	31390	},
-				{ 0.3	,	23790	,	29735	},
-				{ 0.4	,	22885	,	28606	},
-				{ 0.5	,	22315	,	27895	},
-				{ 0.6	,	22145	,	27681	},
-				{ 0.7	,	22230	,	27788	},
-				{ 0.8	,	22885	,	28606	},
-				{ 0.86  ,	23540	,	29425	},
-				{ 0.9	,	24035	,	30044	},
-				{ 0.94  ,	24370	,	30463	},
-				{ 1	    ,	24950	,	31188	},
-				{ 1.04  ,	25270	,	31588	},
-				{ 1.1	,	26260	,	32825	},
-
-			}, -- end of table_data
-			-- M - Mach number
-			-- Pmax - Engine thrust at military power
-			-- Pfor - Engine thrust at AFB
-		}, -- end of engine
-	},
-
+                        MinRUD  =       0, -- Min state of the РУД
+                        MaxRUD  =       1, -- Max state of the РУД
+                        MaksRUD =       1, -- Military power state of the РУД
+                        ForsRUD =       1, -- Afterburner state of the РУД
+                        type    =       "TurboJet",
+                        hMaxEng =       19, -- Max altitude for safe engine operation in km
+                        dcx_eng =       0.0134, -- Engine drag coeficient
+                        cemax   =       1.24, -- not used for fuel calulation , only for AI routines to check flight time ( fuel calculation algorithm is built in )
+                        cefor   =       2.56, -- not used for fuel calulation , only for AI routines to check flight time ( fuel calculation algorithm is built in )
+                        dpdh_m  =       1340, --  altitude coefficient for max thrust
+                        dpdh_f  =       1340, --  altitude coefficient for AB thrust
+                        table_data =
+                        {               --   M                  Pmax             Pfor
+                                { 0.0   ,       26500   ,       33800   },
+                                { 0.1   ,       26500   ,       33800   },
+                                { 0.2   ,       25000   ,       32700   },
+                                { 0.3   ,       23800   ,       31800   },
+                                { 0.4   ,       23000   ,       31000   },
+                                { 0.5   ,       22500   ,       30500   },
+                                { 0.6   ,       22300   ,       30300   },
+                                { 0.7   ,       22400   ,       30400   },
+                                { 0.8   ,       23000   ,       31000   },
+                                { 0.86  ,       23500   ,       31500   },
+                                { 0.9   ,       24000   ,       32000   },
+                                { 0.94  ,       24300   ,       32200   },
+                                { 1     ,       24800   ,       32500   },
+                                { 1.04  ,       25100   ,       32700   },
+                                { 1.1   ,       26200   ,       33500   },
+                        }, -- end of table_data
+                        -- M - Mach number
+                        -- Pmax - Engine thrust at military power
+                        -- Pfor - Engine thrust at AFB
+                }, -- end of engine
+        },
 	-- Blueprint taken from Damage.lua of ED, Fencer (Scripts/Aircraft/_Common/Damage.lua)
 	Damage  = verbose_to_dmg_properties({
 		-- ["COCKPIT"]				= {critical_damage = 2,args =  { 65}},

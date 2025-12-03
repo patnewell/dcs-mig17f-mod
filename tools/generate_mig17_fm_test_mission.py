@@ -12,6 +12,26 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
+import dcs.liveries_scanner as liveries_scanner
+
+
+def stub_pydcs_liveries() -> None:
+    """Prevent pydcs from scanning liveries during import on fresh systems.
+
+    On Windows without a DCS install, importing pydcs triggers a livery scan that
+    assumes certain Lua variables exist, raising ``KeyError`` (e.g. ``country_list``)
+    before this script can run. Pre-populating the liveries map skips that eager
+    initialization so the rest of pydcs can import safely.
+    """
+
+    if liveries_scanner.Liveries.map:
+        return
+
+    liveries_scanner.Liveries.map["__stub__"] = liveries_scanner.LiverySet("__stub__")
+
+
+stub_pydcs_liveries()
+
 from dcs import countries, mapping, mission, planes, task, triggers, unit
 from dcs import weather
 from dcs.terrain import caucasus

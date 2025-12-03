@@ -37,6 +37,14 @@ python tools/generate_mig17_fm_test_mission.py --outfile "C:/Users/<you>/Saved G
 python tools/generate_mig17_fm_test_mission.py --type-name vwv_mig17f
 ```
 
+> **Windows note:** In the CI/Codex Linux environment the generator runs without a
+> local DCS installation, so PyDCS never finds any livery folders to scan and
+> imports cleanly. On Windows, PyDCS will attempt to scan the default DCS
+> install and Saved Games paths during import, which can trigger a `KeyError`
+> if the expected `country_list` variable is missing in certain livery scripts.
+> The repository includes a stub to short-circuit that scan when running the
+> generator so it behaves consistently across platforms.
+
 Defaults:
 - Output: `build/MiG17F_FM_Test.miz` (directories are created automatically).
 - Mod root: `[VWV] MiG-17/` relative to the repo; override with `--mod-root` if the mod lives elsewhere.

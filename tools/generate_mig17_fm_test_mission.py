@@ -205,8 +205,9 @@ def build_mission(type_name: str) -> tuple[mission.Mission, list[str]]:
     custom_plane = get_or_create_custom_plane(type_name)
 
     groups: list[str] = []
-    x_origin = 300000
-    y_origin = 600000
+    # Black Sea, grid CH area (over ocean)
+    x_origin = -275000
+    y_origin = 200000
 
     def add_group(
         name: str,
@@ -452,7 +453,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate MiG-17 FM test mission")
     parser.add_argument(
         "--outfile",
-        default=Path("build") / "MiG17F_FM_Test.miz",
+        default=Path.home() / "Saved Games" / "DCS" / "Missions" / "MiG17F_FM_Test.miz",
         type=Path,
         help="Path to output .miz file (directories will be created)",
     )

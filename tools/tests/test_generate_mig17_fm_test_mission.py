@@ -5,8 +5,10 @@ import subprocess
 import sys
 import tempfile
 import unittest
-import zipfile
 from pathlib import Path
+
+from dcs import mission as dcs_mission
+from dcs import task as dcs_task
 
 from tools import generate_mig17_fm_test_mission as gen
 
@@ -77,19 +79,87 @@ class MissionGeneratorEndToEndTests(unittest.TestCase):
             self.assertTrue(outfile.exists())
             self.assertGreater(outfile.stat().st_size, 0)
 
-            mission_loader = gen.mission.Mission()
             type_name = gen.detect_type_name(MOD_ROOT) or "vwv_mig17f"
             gen.get_or_create_custom_plane(type_name)
-            load = getattr(mission_loader, "load_file", None) or getattr(mission_loader, "load", None)
-            self.assertIsNotNone(load, "Mission class does not expose a loader")
-            load(str(outfile))
+            mission_data = dcs_mission.Mission()
+            mission_data.load_file(str(outfile))
 
-            with zipfile.ZipFile(outfile, "r") as miz_zip:
-                self.assertIn("mission", miz_zip.namelist())
-                mission_content = miz_zip.read("mission").decode("utf-8", errors="ignore")
+            red = mission_data.coalition.get("red")
+            self.assertIsNotNone(red, "Red coalition missing in generated mission")
+            russia = red.countries.get("Russia") if red else None
+            self.assertIsNotNone(russia, "Russia country missing from red coalition")
 
-            for name in EXPECTED_GROUPS:
-                self.assertIn(name, mission_content)
+            groups = {g.name: g for g in getattr(russia, "plane_group", [])}
+            self.assertCountEqual(EXPECTED_GROUPS, groups.keys())
+
+            expected_waypoints = {
+                "ACCEL_SL": [
+                    {"x": 305000, "y": 600000, "alt": 1000 * gen.FT_TO_METERS, "speed": 230 * gen.KTS_TO_MPS},
+                    {"x": 397600, "y": 600000, "alt": 1000 * gen.FT_TO_METERS, "speed": 800 * gen.KTS_TO_MPS},
+                    {"x": 416120, "y": 600000, "alt": 1000 * gen.FT_TO_METERS, "speed": 800 * gen.KTS_TO_MPS, "orbit": True},
+                ],
+                "ACCEL_10K": [
+                    {"x": 300000, "y": 605000, "alt": 10000 * gen.FT_TO_METERS, "speed": 300 * gen.KTS_TO_MPS},
+                    {"x": 300000, "y": 697600, "alt": 10000 * gen.FT_TO_METERS, "speed": 800 * gen.KTS_TO_MPS},
+                    {"x": 300000, "y": 716120, "alt": 10000 * gen.FT_TO_METERS, "speed": 800 * gen.KTS_TO_MPS, "orbit": True},
+                ],
+                "ACCEL_20K": [
+                    {"x": 295000, "y": 600000, "alt": 20000 * gen.FT_TO_METERS, "speed": 300 * gen.KTS_TO_MPS},
+                    {"x": 295000, "y": 692600, "alt": 20000 * gen.FT_TO_METERS, "speed": 800 * gen.KTS_TO_MPS},
+                    {"x": 295000, "y": 711120, "alt": 20000 * gen.FT_TO_METERS, "speed": 800 * gen.KTS_TO_MPS, "orbit": True},
+                ],
+                "CLIMB_0K_380": [
+                    {"x": 315000, "y": 615000, "alt": 1000 * gen.FT_TO_METERS, "speed": 380 * gen.KTS_TO_MPS},
+                    {"x": 315000, "y": 615000, "alt": 33000 * gen.FT_TO_METERS, "speed": 380 * gen.KTS_TO_MPS},
+                ],
+                "CLIMB_10K_380": [
+                    {"x": 320000, "y": 585000, "alt": 10000 * gen.FT_TO_METERS, "speed": 380 * gen.KTS_TO_MPS},
+                    {"x": 320000, "y": 585000, "alt": 33000 * gen.FT_TO_METERS, "speed": 380 * gen.KTS_TO_MPS},
+                ],
+                "TURN_10K_300": [
+                    {"x": 285000, "y": 594000, "alt": 10000 * gen.FT_TO_METERS, "speed": 300 * gen.KTS_TO_MPS},
+                    {"x": 285000, "y": 594000, "alt": 10000 * gen.FT_TO_METERS, "speed": 300 * gen.KTS_TO_MPS, "orbit": True},
+                ],
+                "TURN_10K_350": [
+                    {"x": 285000, "y": 593000, "alt": 10000 * gen.FT_TO_METERS, "speed": 350 * gen.KTS_TO_MPS},
+                    {"x": 285000, "y": 593000, "alt": 10000 * gen.FT_TO_METERS, "speed": 350 * gen.KTS_TO_MPS, "orbit": True},
+                ],
+                "TURN_10K_400": [
+                    {"x": 285000, "y": 592000, "alt": 10000 * gen.FT_TO_METERS, "speed": 400 * gen.KTS_TO_MPS},
+                    {"x": 285000, "y": 592000, "alt": 10000 * gen.FT_TO_METERS, "speed": 400 * gen.KTS_TO_MPS, "orbit": True},
+                ],
+                "DECEL_10K_325": [
+                    {"x": 330000, "y": 600000, "alt": 10000 * gen.FT_TO_METERS, "speed": 325 * gen.KTS_TO_MPS},
+                    {"x": 404080, "y": 600000, "alt": 10000 * gen.FT_TO_METERS, "speed": 200 * gen.KTS_TO_MPS},
+                ],
+            }
+
+            orbit_classes = tuple(
+                cls for cls in (getattr(dcs_task, "OrbitAction", None), getattr(dcs_task, "Orbit", None)) if cls
+            )
+            self.assertTrue(orbit_classes, "No orbit task class available in dcs library")
+
+            for name, expected_points in expected_waypoints.items():
+                group = groups.get(name)
+                self.assertIsNotNone(group, f"Missing group {name}")
+                if group is None:  # pragma: no cover - guard for mypy
+                    continue
+
+                self.assertEqual(len(expected_points), len(group.points), f"Unexpected waypoint count for {name}")
+                for idx, expected in enumerate(expected_points):
+                    wp = group.points[idx]
+                    self.assertAlmostEqual(expected["x"], wp.position.x, delta=1.0)
+                    self.assertAlmostEqual(expected["y"], wp.position.y, delta=1.0)
+                    self.assertAlmostEqual(expected["alt"], wp.alt, delta=0.5)
+                    self.assertAlmostEqual(expected["speed"], wp.speed, delta=0.1)
+
+                    expect_orbit = expected.get("orbit", False)
+                    tasks = getattr(wp, "tasks", []) or []
+                    has_orbit = any(isinstance(t, orbit_classes) for t in tasks)
+                    if expect_orbit:
+                        self.assertTrue(has_orbit, f"Missing orbit task at waypoint {idx} for {name}")
+                    else:
+                        self.assertFalse(has_orbit, f"Unexpected orbit task at waypoint {idx} for {name}")
 
 
 if __name__ == "__main__":

@@ -7,12 +7,14 @@ profiles for the VWV MiG-17F mod. It requires Python 3 and the ``dcs`` library
 from __future__ import annotations
 
 import argparse
+import logging
 import re
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import Iterable, Optional
 
-from dcs import countries, mapping, mission, planes, task, triggers, unit
+from dcs import countries, mapping, mission, planes, task
 from dcs import weather
 from dcs.terrain import caucasus
 
@@ -109,10 +111,36 @@ LOGGER_LUA = r'''
 '''
 
 
+LOGGER = logging.getLogger(__name__)
+
+
 # Conversion helpers
 FT_TO_METERS = 0.3048
 KTS_TO_MPS = 0.514444
 NM_TO_METERS = 1852.0
+
+
+@dataclass(frozen=True)
+class WaypointSpec:
+    """Declarative waypoint definition used to build pydcs mission points."""
+
+    x: float
+    y: float
+    alt_ft: Optional[float] = None
+    speed_kts: Optional[float] = None
+    tasks: tuple[task.Task, ...] = ()
+
+    def altitude_meters(self, default_alt_ft: float) -> float:
+        alt_ft = self.alt_ft if self.alt_ft is not None else default_alt_ft
+        return alt_ft * FT_TO_METERS
+
+    def speed_kph(self, default_speed_kts: float) -> float:
+        speed_kts = self.speed_kts if self.speed_kts is not None else default_speed_kts
+        return speed_kts * 1.852
+
+    def speed_mps(self, default_speed_kts: float) -> float:
+        speed_kts = self.speed_kts if self.speed_kts is not None else default_speed_kts
+        return speed_kts * KTS_TO_MPS
 
 
 def detect_type_name(mod_root: Path) -> Optional[str]:
@@ -129,7 +157,7 @@ def detect_type_name(mod_root: Path) -> Optional[str]:
     return None
 
 
-def get_or_create_custom_plane(type_name: str):
+def get_or_create_custom_plane(type_name: str) -> planes.PlaneType:
     """Register a minimal custom plane type so pydcs can serialize the mod aircraft."""
 
     existing = planes.plane_map.get(type_name)
@@ -152,14 +180,13 @@ def ensure_parent(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
 
-def build_mission(type_name: str):
+def build_mission(type_name: str) -> tuple[mission.Mission, list[str]]:
     """Construct the mission object populated with test groups."""
 
     miz = mission.Mission()
     miz.terrain = caucasus.Caucasus()
     miz.start_time = datetime(2024, 6, 1, 12, 0, tzinfo=timezone.utc)
 
-    # Weather: clear, no wind, standard atmosphere
     weather_settings = weather.Weather(miz.terrain)
     weather_settings.wind_at_ground = weather.Wind(0, 0)
     weather_settings.wind_at_2000 = weather.Wind(0, 0)
@@ -177,51 +204,63 @@ def build_mission(type_name: str):
     russia = red.add_country(countries.Russia())
     custom_plane = get_or_create_custom_plane(type_name)
 
-    groups: List[str] = []
+    groups: list[str] = []
     x_origin = 300000
     y_origin = 600000
 
-    def add_group(name: str, alt_ft: float, speed_kts: float, waypoints: List[dict]):
+    def add_group(
+        name: str,
+        alt_ft: float,
+        speed_kts: float,
+        waypoints: Iterable[WaypointSpec],
+    ) -> None:
+        waypoint_list = list(waypoints)
+        if not waypoint_list:
+            msg = f"Group {name} has no waypoints defined"
+            raise ValueError(msg)
+
         altitude_m = alt_ft * FT_TO_METERS
-        speed_kph = speed_kts * 1.852
-        first_wp = waypoints[0]
+        first_wp = waypoint_list[0]
         grp = miz.flight_group_inflight(
             country=russia,
             name=name,
             aircraft_type=custom_plane,
-            position=mapping.Point(first_wp["x"], first_wp["y"], altitude_m),
+            position=mapping.Point(first_wp.x, first_wp.y, altitude_m),
             altitude=altitude_m,
-            speed=speed_kph,
+            speed=speed_kts * 1.852,
             maintask=task.CAP,
             group_size=1,
         )
+        if grp not in russia.plane_group:
+            russia.add_aircraft_group(grp)
+
         first_unit = grp.units[0]
         first_unit.livery_id = getattr(first_unit, "livery_id", None) or "default"
         if hasattr(first_unit, "fuel"):
             first_unit.fuel = int(first_unit.fuel * 0.5)
+
         start_point = grp.points[0]
-        start_point.position.x = first_wp["x"]
-        start_point.position.y = first_wp["y"]
+        start_point.position.x = first_wp.x
+        start_point.position.y = first_wp.y
         start_point.alt = altitude_m
         start_point.speed = speed_kts * KTS_TO_MPS
 
-        for wp in waypoints[1:]:
-            wp_alt_m = wp.get("alt", alt_ft) * FT_TO_METERS
-            wp_speed_kts = wp.get("speed", speed_kts)
-            wp_speed_kph = wp_speed_kts * 1.852
+        for wp in waypoint_list[1:]:
+            wp_alt_m = wp.altitude_meters(alt_ft)
             pt = grp.add_waypoint(
-                pos=mapping.Point(wp["x"], wp["y"], wp_alt_m),
+                pos=mapping.Point(wp.x, wp.y, wp_alt_m),
                 altitude=wp_alt_m,
-                speed=wp_speed_kph,
+                speed=wp.speed_kph(speed_kts),
             )
-            pt.speed = wp_speed_kts * KTS_TO_MPS
+            pt.speed = wp.speed_mps(speed_kts)
             pt.alt = wp_alt_m
-            if "tasks" in wp:
-                for t in wp["tasks"]:
-                    pt.tasks.append(t)
+            for wp_task in wp.tasks:
+                pt.tasks.append(wp_task)
         groups.append(name)
 
-    def orbit_task(race_track: bool, altitude_ft: float, speed_kts: float, radius_nm: float):
+    def orbit_task(
+        *, race_track: bool, altitude_ft: float, speed_kts: float, radius_nm: float
+    ) -> task.Task:
         alt_m = altitude_ft * FT_TO_METERS
         speed_mps = speed_kts * KTS_TO_MPS
         radius_m = radius_nm * NM_TO_METERS
@@ -230,25 +269,38 @@ def build_mission(type_name: str):
             pattern = (
                 pattern_enum.RaceTrack if race_track else pattern_enum.Circle
             ) if pattern_enum else None
-            return task.OrbitAction(pattern=pattern or race_track, altitude=alt_m, speed=speed_mps)
+            return task.OrbitAction(
+                pattern=pattern or race_track, altitude=alt_m, speed=speed_mps
+            )
         if hasattr(task, "Orbit"):
-            return task.Orbit(altitude=alt_m, speed=speed_mps, pattern="Race" if race_track else "Circle", length=radius_m)
-        raise RuntimeError("Orbit task is not available in the installed dcs library")
+            return task.Orbit(
+                altitude=alt_m,
+                speed=speed_mps,
+                pattern="Race" if race_track else "Circle",
+                length=radius_m,
+            )
+        msg = "Orbit task is not available in the installed dcs library"
+        raise RuntimeError(msg)
 
-    # Level acceleration tests
     add_group(
         "ACCEL_SL",
         alt_ft=1000,
         speed_kts=230,
         waypoints=[
-            {"x": x_origin + 5000, "y": y_origin},
-            {"x": x_origin + 5000 + 50 * NM_TO_METERS, "y": y_origin, "speed": 800},
-            {
-                "x": x_origin + 5000 + 60 * NM_TO_METERS,
-                "y": y_origin,
-                "speed": 800,
-                "tasks": [orbit_task(True, 1000, 800, radius_nm=10)],
-            },
+            WaypointSpec(x=x_origin + 5000, y=y_origin),
+            WaypointSpec(
+                x=x_origin + 5000 + 50 * NM_TO_METERS, y=y_origin, speed_kts=800
+            ),
+            WaypointSpec(
+                x=x_origin + 5000 + 60 * NM_TO_METERS,
+                y=y_origin,
+                speed_kts=800,
+                tasks=(
+                    orbit_task(
+                        race_track=True, altitude_ft=1000, speed_kts=800, radius_nm=10
+                    ),
+                ),
+            ),
         ],
     )
 
@@ -257,14 +309,23 @@ def build_mission(type_name: str):
         alt_ft=10000,
         speed_kts=300,
         waypoints=[
-            {"x": x_origin, "y": y_origin + 5000},
-            {"x": x_origin, "y": y_origin + 5000 + 50 * NM_TO_METERS, "speed": 800},
-            {
-                "x": x_origin,
-                "y": y_origin + 5000 + 60 * NM_TO_METERS,
-                "speed": 800,
-                "tasks": [orbit_task(True, 10000, 800, radius_nm=10)],
-            },
+            WaypointSpec(x=x_origin, y=y_origin + 5000),
+            WaypointSpec(
+                x=x_origin, y=y_origin + 5000 + 50 * NM_TO_METERS, speed_kts=800
+            ),
+            WaypointSpec(
+                x=x_origin,
+                y=y_origin + 5000 + 60 * NM_TO_METERS,
+                speed_kts=800,
+                tasks=(
+                    orbit_task(
+                        race_track=True,
+                        altitude_ft=10000,
+                        speed_kts=800,
+                        radius_nm=10,
+                    ),
+                ),
+            ),
         ],
     )
 
@@ -273,25 +334,43 @@ def build_mission(type_name: str):
         alt_ft=20000,
         speed_kts=300,
         waypoints=[
-            {"x": x_origin - 5000, "y": y_origin},
-            {"x": x_origin - 5000, "y": y_origin + 50 * NM_TO_METERS, "speed": 800},
-            {
-                "x": x_origin - 5000,
-                "y": y_origin + 60 * NM_TO_METERS,
-                "speed": 800,
-                "tasks": [orbit_task(True, 20000, 800, radius_nm=10)],
-            },
+            WaypointSpec(x=x_origin - 5000, y=y_origin),
+            WaypointSpec(
+                x=x_origin - 5000, y=y_origin + 50 * NM_TO_METERS, speed_kts=800
+            ),
+            WaypointSpec(
+                x=x_origin - 5000,
+                y=y_origin + 60 * NM_TO_METERS,
+                speed_kts=800,
+                tasks=(
+                    orbit_task(
+                        race_track=True,
+                        altitude_ft=20000,
+                        speed_kts=800,
+                        radius_nm=10,
+                    ),
+                ),
+            ),
         ],
     )
 
-    # Climb tests
     add_group(
         "CLIMB_0K_380",
         alt_ft=1000,
         speed_kts=380,
         waypoints=[
-            {"x": x_origin + 15000, "y": y_origin + 15000, "alt": 1000, "speed": 380},
-            {"x": x_origin + 15000, "y": y_origin + 15000, "alt": 33000, "speed": 380},
+            WaypointSpec(
+                x=x_origin + 15000,
+                y=y_origin + 15000,
+                alt_ft=1000,
+                speed_kts=380,
+            ),
+            WaypointSpec(
+                x=x_origin + 15000,
+                y=y_origin + 15000,
+                alt_ft=33000,
+                speed_kts=380,
+            ),
         ],
     )
 
@@ -300,37 +379,67 @@ def build_mission(type_name: str):
         alt_ft=10000,
         speed_kts=380,
         waypoints=[
-            {"x": x_origin + 20000, "y": y_origin - 15000, "alt": 10000, "speed": 380},
-            {"x": x_origin + 20000, "y": y_origin - 15000, "alt": 33000, "speed": 380},
+            WaypointSpec(
+                x=x_origin + 20000,
+                y=y_origin - 15000,
+                alt_ft=10000,
+                speed_kts=380,
+            ),
+            WaypointSpec(
+                x=x_origin + 20000,
+                y=y_origin - 15000,
+                alt_ft=33000,
+                speed_kts=380,
+            ),
         ],
     )
 
-    # Turn tests at 10k
     for speed in (300, 350, 400):
         add_group(
             f"TURN_10K_{speed}",
             alt_ft=10000,
             speed_kts=speed,
             waypoints=[
-                {"x": x_origin - 15000, "y": y_origin - speed * 20, "alt": 10000, "speed": speed},
-                {
-                    "x": x_origin - 15000,
-                    "y": y_origin - speed * 20,
-                    "alt": 10000,
-                    "speed": speed,
-                    "tasks": [orbit_task(False, 10000, speed, radius_nm=6)],
-                },
+                WaypointSpec(
+                    x=x_origin - 15000,
+                    y=y_origin - speed * 20,
+                    alt_ft=10000,
+                    speed_kts=speed,
+                ),
+                WaypointSpec(
+                    x=x_origin - 15000,
+                    y=y_origin - speed * 20,
+                    alt_ft=10000,
+                    speed_kts=speed,
+                    tasks=(
+                        orbit_task(
+                            race_track=False,
+                            altitude_ft=10000,
+                            speed_kts=speed,
+                            radius_nm=6,
+                        ),
+                    ),
+                ),
             ],
         )
 
-    # Deceleration test
     add_group(
         "DECEL_10K_325",
         alt_ft=10000,
         speed_kts=325,
         waypoints=[
-            {"x": x_origin + 30000, "y": y_origin, "alt": 10000, "speed": 325},
-            {"x": x_origin + 30000 + 40 * NM_TO_METERS, "y": y_origin, "alt": 10000, "speed": 200},
+            WaypointSpec(
+                x=x_origin + 30000,
+                y=y_origin,
+                alt_ft=10000,
+                speed_kts=325,
+            ),
+            WaypointSpec(
+                x=x_origin + 30000 + 40 * NM_TO_METERS,
+                y=y_origin,
+                alt_ft=10000,
+                speed_kts=200,
+            ),
         ],
     )
 
@@ -362,11 +471,18 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    if not logging.getLogger().handlers:
+        logging.basicConfig(
+            level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s"
+        )
+
     args = parse_args()
 
     type_name = args.type_name or detect_type_name(args.mod_root)
     if not type_name:
-        print("Could not determine MiG-17 type name. Use --type-name to set it explicitly.")
+        LOGGER.error(
+            "Could not determine MiG-17 type name. Use --type-name to set it explicitly."
+        )
         return 2
 
     ensure_parent(args.outfile)
@@ -374,21 +490,21 @@ def main() -> int:
     try:
         miz, groups = build_mission(type_name)
     except Exception as exc:  # pragma: no cover - runtime creation errors
-        print(f"Failed to build mission: {exc}")
+        LOGGER.exception("Failed to build mission: %s", exc)
         return 4
 
     try:
         miz.save(args.outfile)
     except Exception as exc:  # pragma: no cover
-        print(f"Failed to save mission: {exc}")
+        LOGGER.exception("Failed to save mission: %s", exc)
         return 5
 
-    print("MiG-17 FM test mission generated.")
-    print(f"  Output : {args.outfile}")
-    print(f"  Type   : {type_name}")
-    print("  Groups :")
+    LOGGER.info("MiG-17 FM test mission generated.")
+    LOGGER.info("Output : %s", args.outfile)
+    LOGGER.info("Type   : %s", type_name)
+    LOGGER.info("Groups :")
     for name in groups:
-        print(f"    - {name}")
+        LOGGER.info("  - %s", name)
     return 0
 
 

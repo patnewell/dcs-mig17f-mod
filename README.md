@@ -2,6 +2,75 @@
 
 This repository packages a fork of the VWV MiG-17F community aircraft for DCS World. The fork focuses on iterating on the flight model for Vietnam-era air-to-air combat while keeping the supporting tooling and reference missions in one place.
 
+## Flight Model Target Specifications
+
+The MiG-17F "Fresco C" was the definitive day-fighter variant, powered by the Klimov VK-1F afterburning turbojet. This mod aims to replicate the performance characteristics of the Vietnam War-era aircraft that proved surprisingly effective against faster American fighters like the F-4 Phantom and F-105 Thunderchief.
+
+### Historical Performance Targets
+
+| Parameter | Target Value | Notes |
+|-----------|--------------|-------|
+| **Max speed (sea level)** | 1,100 km/h (593 kt) | Mach 0.89 [1][2] |
+| **Max speed (3,000 m / 10,000 ft)** | 1,145 km/h (618 kt) | Mach 0.93 with afterburner [1][2] |
+| **Service ceiling** | 16,600 m (54,500 ft) | [1][2] |
+| **Rate of climb** | 65 m/s (12,800 ft/min) | At sea level with afterburner [1][2] |
+| **Thrust/weight ratio** | 0.63 | At normal loaded weight [1] |
+| **G limits** | +8 / -3 | [1] |
+| **Range** | 2,020 km (1,090 nm) | With 2× 400L drop tanks [1][2] |
+
+### Current Flight Model Values
+
+Defined in `[VWV] MiG-17/Database/mig17f.lua`:
+
+**Weights**
+- Empty: 3,920 kg (8,642 lb) — includes pilot [1][2]
+- Normal loaded: 5,345 kg (11,784 lb) — empty + full internal fuel
+- Max takeoff: 6,075 kg (13,393 lb) [1][2]
+- Internal fuel: 1,140 kg (2,513 lb)
+
+**Engine (Klimov VK-1F)**
+- Military thrust: 26.5 kN (5,960 lbf) [1][2]
+- Afterburner thrust: 33.8 kN (7,600 lbf) [1][2]
+- Max operating altitude: 19,000 m
+
+**Dimensions**
+- Wing span: 9.628 m (31 ft 7 in) [1][2]
+- Wing area: 22.6 m² [1][2]
+- Length: 11.09 m (36 ft 5 in)
+- Height: 3.80 m (12 ft 6 in) [1][2]
+
+**Aerodynamics**
+- Wing sweep: 45° inboard / 42° outboard [1]
+- Max AoA (low speed): 18.4°
+- Max AoA (transonic): 8–12°
+- Peak roll rate: ~1.8 rad/s at Mach 0.5
+
+### Armament
+
+| Weapon | Caliber | Rounds | Rate of Fire |
+|--------|---------|--------|--------------|
+| Nudelman N-37 | 37 mm | 40 | 400 rpm |
+| Nudelman-Rikhter NR-23 (×2) | 23 mm | 80 each | 700 rpm |
+
+The MiG-17's guns could deliver approximately 23 kg (50 lb) of projectiles in a 2-second burst at 1,500 m range—comparable to American 20 mm cannon armament [3].
+
+### Design Philosophy
+
+The flight model is tuned to capture the MiG-17F's key combat characteristics:
+
+1. **Transonic agility** — Excellent roll rate and pitch authority at Mach 0.5–0.8
+2. **Energy retention** — Good sustained turn performance in the subsonic regime
+3. **Climb performance** — Afterburner roughly doubles rate of climb [1]
+4. **Speed limitations** — Aircraft tends to pitch up approaching Mach 1; controllable to ~Mach 0.95 [1]
+
+The MiG-17 excelled in close-range dogfights where its superior maneuverability offset its lower top speed compared to American fighters optimized for missile combat [3].
+
+### References
+
+1. Belyakov, R.A. and Marmain, Jacques. *MiG: Fifty Years of Secret Aircraft Design*. Naval Institute Press, 1994. ISBN 978-1557505668.
+2. Wilson, Stewart. *Combat Aircraft Since 1945*. Aerospace Publications, 2000. ISBN 978-1875671502.
+3. Toperczer, István. *MiG-17 and MiG-19 Units of the Vietnam War*. Osprey Publishing (Combat Aircraft 25), 2001. ISBN 978-1841761626.
+
 ## Repository layout
 - `[VWV] MiG-17/`: aircraft definition, models, textures, and configuration Lua for the mod itself.
 - `tools/`: Python helpers, including environment bootstrap (`setup_env.py`) and the flight-model test mission generator (`generate_mig17_fm_test_mission.py`).

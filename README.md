@@ -75,6 +75,7 @@ The MiG-17 excelled in close-range dogfights where its superior maneuverability 
 - `[VWV] MiG-17/`: aircraft definition, models, textures, and configuration Lua for the mod itself.
 - `tools/`: Python helpers for flight model testing and development:
   - `setup_env.py`: environment bootstrap for dependencies
+  - `run_fm_test.py`: **orchestrates a complete test run** (build, install, launch, wait, analyze)
   - `generate_mig17_fm_test_mission.py`: FM test mission generator (supports single and multi-FM modes)
   - `parse_fm_test_log.py`: parses DCS logs and generates pass/fail verification reports
   - `build_mig17f_variants_from_json.py`: builds multiple FM variant mods from JSON configuration
@@ -82,6 +83,7 @@ The MiG-17 excelled in close-range dogfights where its superior maneuverability 
   - `mig17f_fm_variants.json`: variant definitions with scaling factors (checked in)
   - `mods/`: generated variant mod folders (gitignored; regenerate with `build_mig17f_variants_from_json.py`)
 - `Tests/`: mission scripts and notes for manual flight-model checks.
+- `test_runs/`: archived test run data (gitignored; created by `run_fm_test.py`)
 - `codex_ref/`: reference aircraft data (MiG-15bis, MiG-19P, MiG-21bis Lua files) and a sample `.miz` used by the tooling tests.
 
 ## Installing the aircraft
@@ -151,6 +153,32 @@ python tools/build_mig17f_variants_from_json.py --dcs-saved-games "C:/Users/<you
 ```
 
 The builder reads `fm_variants/mig17f_fm_variants.json` and generates mod folders in `fm_variants/mods/` with scaled SFM coefficients (Cx0, induced drag polar, engine drag, afterburner thrust). Each variant appears as a distinct aircraft type in DCS. The generated mods are gitignored and can be regenerated from the JSON configuration.
+
+## Running a complete flight test
+
+The `run_fm_test.py` script orchestrates the entire test workflow:
+
+```bash
+python tools/run_fm_test.py
+python tools/run_fm_test.py --timeout 900  # 15 minute timeout
+python tools/run_fm_test.py --skip-build   # reuse existing mods
+python tools/run_fm_test.py --analyze-only path/to/dcs.log  # analyze existing log
+```
+
+The script performs these steps automatically:
+1. Builds all FM variant mods from JSON configuration
+2. Installs mods to DCS (removes duplicates first)
+3. Generates the test mission with a unique run ID
+4. Launches DCS if not already running
+5. Polls the DCS log file for test completion (~10 minutes)
+6. Archives the log to `test_runs/<timestamp>_<run_id>/`
+7. Runs analysis and outputs pass/fail report
+
+Test results are saved to `test_runs/` (gitignored) with:
+- `dcs.log`: copy of the DCS log from the test run
+- `fm_test_report.txt`: human-readable pass/fail report
+- `fm_test_results.csv`: data for further analysis
+- `run_info.txt`: metadata about the run
 
 ## Mission scripts and references
 - `Tests/README.md`: detailed documentation of test groups, targets, fuel loads, and log formats.

@@ -39,3 +39,6 @@ Thumbs.db
 
 # Generated FM variant mods (regenerate with build_mig17f_variants_from_json.py)
 fm_variants/mods/
+
+# Test run data (logs, reports)
+test_runs/

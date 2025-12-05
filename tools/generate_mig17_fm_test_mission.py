@@ -18,6 +18,7 @@ import argparse
 import json
 import logging
 import re
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -42,6 +43,7 @@ LOGGER_LUA_TEMPLATE = r'''
 do
   local MIG17_TEST = {}
 
+  MIG17_TEST.RUN_ID = "{RUN_ID}"
   MIG17_TEST.GROUPS = {GROUPS_LUA_ARRAY}
 
   MIG17_TEST.samplePeriod = 0.5
@@ -230,9 +232,11 @@ do
       end
     end
     log("=== END SUMMARY ===")
+    log("RUN_END," .. MIG17_TEST.RUN_ID)
     return nil
   end
 
+  log("RUN_START," .. MIG17_TEST.RUN_ID)
   log("MiG-17 FM test logger v2 initializing")
   log(string.format("Targets: Vmax_SL=%dkt Vmax_10K=%dkt ROC=%dfpm",
       MIG17_TEST.TARGETS.vmax_sl_kt, MIG17_TEST.TARGETS.vmax_10k_kt,
@@ -242,17 +246,14 @@ do
 end
 '''
 
-# Static Lua for backwards compatibility (single-FM mode)
-LOGGER_LUA_STATIC = LOGGER_LUA_TEMPLATE.replace(
-    "{GROUPS_LUA_ARRAY}",
-    """{
+# Default groups for single-FM mode
+SINGLE_FM_GROUPS = [
     "ACCEL_SL", "ACCEL_10K", "ACCEL_20K",
     "CLIMB_SL", "CLIMB_10K",
     "TURN_10K_300", "TURN_10K_350", "TURN_10K_400",
     "VMAX_SL", "VMAX_10K",
     "DECEL_10K",
-  }""",
-)
+]
 
 
 LOGGER = logging.getLogger(__name__)
@@ -394,8 +395,16 @@ def ensure_parent(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
 
-def render_logger_lua(group_names: list[str]) -> str:
-    """Render the Lua logger script with the actual group names."""
+def render_logger_lua(group_names: list[str], run_id: str) -> str:
+    """Render the Lua logger script with the actual group names and run ID.
+
+    Args:
+        group_names: List of test group names to monitor
+        run_id: Unique identifier for this test run (logged at start/end)
+
+    Returns:
+        Rendered Lua script string
+    """
     # Build Lua array string
     quoted_names = [f'"{name}"' for name in group_names]
     # Format as multi-line for readability if many groups
@@ -405,7 +414,9 @@ def render_logger_lua(group_names: list[str]) -> str:
     else:
         lua_array = "{\n    " + ", ".join(quoted_names) + ",\n  }"
 
-    return LOGGER_LUA_TEMPLATE.replace("{GROUPS_LUA_ARRAY}", lua_array)
+    result = LOGGER_LUA_TEMPLATE.replace("{GROUPS_LUA_ARRAY}", lua_array)
+    result = result.replace("{RUN_ID}", run_id)
+    return result
 
 
 # Base test patterns used by both single-FM and multi-FM modes
@@ -427,16 +438,20 @@ BASE_TEST_PATTERNS = [
 def build_mission(
     type_name: str,
     variants: Optional[list[VariantDescriptor]] = None,
-) -> tuple[mission.Mission, list[str]]:
+    run_id: Optional[str] = None,
+) -> tuple[mission.Mission, list[str], str]:
     """Construct the mission object populated with test groups.
 
     Args:
         type_name: DCS type name for single-FM mode (used when variants is None)
         variants: List of variant descriptors for multi-FM mode
+        run_id: Unique identifier for this test run (auto-generated if None)
 
     Returns:
-        Tuple of (mission, list of group names)
+        Tuple of (mission, list of group names, run_id)
     """
+    if run_id is None:
+        run_id = uuid.uuid4().hex[:12]
     miz = mission.Mission()
     miz.terrain = caucasus.Caucasus()
     miz.start_time = datetime(2024, 6, 1, 12, 0, tzinfo=timezone.utc)
@@ -816,19 +831,20 @@ def build_mission(
             )
 
         # Render dynamic Lua logger
-        logger_lua = render_logger_lua(groups)
+        logger_lua = render_logger_lua(groups, run_id)
     else:
         # Single-FM mode: original behavior
         custom_plane = get_or_create_custom_plane(type_name)
         build_test_groups_for_variant(0, "", custom_plane)
-        logger_lua = LOGGER_LUA_STATIC
+        groups = SINGLE_FM_GROUPS.copy()
+        logger_lua = render_logger_lua(groups, run_id)
 
     # Add mission start trigger with the logging script
     trig = triggers.TriggerStart(comment="MiG-17 FM Test Logger")
     trig.add_action(action.DoScript(action.String(logger_lua)))
     miz.triggerrules.triggers.append(trig)
 
-    return miz, groups
+    return miz, groups, run_id
 
 
 def parse_args() -> argparse.Namespace:
@@ -897,7 +913,7 @@ def main() -> int:
     ensure_parent(args.outfile)
 
     try:
-        miz, groups = build_mission(type_name, variants)
+        miz, groups, run_id = build_mission(type_name, variants)
     except Exception as exc:  # pragma: no cover - runtime creation errors
         LOGGER.exception("Failed to build mission: %s", exc)
         return 4
@@ -910,6 +926,7 @@ def main() -> int:
 
     LOGGER.info("MiG-17 FM test mission generated.")
     LOGGER.info("Output : %s", args.outfile)
+    LOGGER.info("Run ID : %s", run_id)
     if variants:
         LOGGER.info("Mode   : Multi-FM (%d variants)", len(variants))
         for v in variants:
@@ -919,6 +936,9 @@ def main() -> int:
     LOGGER.info("Groups : %d total", len(groups))
     for name in groups:
         LOGGER.info("  - %s", name)
+
+    # Print run_id to stdout for scripting (on its own line after all logging)
+    print(f"RUN_ID={run_id}")
     return 0
 
 

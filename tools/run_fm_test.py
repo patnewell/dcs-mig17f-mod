@@ -66,25 +66,47 @@ class DCSPaths:
         Raises:
             FileNotFoundError: If DCS installation cannot be found
         """
-        # Find DCS installation
+        # Find DCS installation - prioritize Steam, then standalone
         if install_dir and install_dir.exists():
             dcs_install = install_dir
         else:
-            candidates = [
+            # Steam installation paths (prioritized)
+            steam_candidates = [
+                Path("C:/Program Files (x86)/Steam/steamapps/common/DCSWorld"),
+                Path("C:/Program Files/Steam/steamapps/common/DCSWorld"),
+                Path("D:/Steam/steamapps/common/DCSWorld"),
+                Path("D:/SteamLibrary/steamapps/common/DCSWorld"),
+                Path("E:/SteamLibrary/steamapps/common/DCSWorld"),
+            ]
+            # Standalone installation paths (fallback)
+            standalone_candidates = [
                 Path("C:/Program Files/Eagle Dynamics/DCS World"),
                 Path("C:/Program Files/Eagle Dynamics/DCS World OpenBeta"),
                 Path("D:/DCS World"),
                 Path("D:/DCS World OpenBeta"),
             ]
+
             dcs_install = None
-            for candidate in candidates:
-                if candidate.exists():
+            # Check Steam paths first
+            for candidate in steam_candidates:
+                exe_path = candidate / "bin" / "DCS.exe"
+                if exe_path.exists():
                     dcs_install = candidate
                     break
+
+            # Fall back to standalone if Steam not found
+            if not dcs_install:
+                for candidate in standalone_candidates:
+                    exe_path = candidate / "bin" / "DCS.exe"
+                    if exe_path.exists():
+                        dcs_install = candidate
+                        break
+
             if not dcs_install:
                 msg = (
                     "Could not find DCS installation. "
-                    "Use --dcs-path to specify location."
+                    "Use --dcs-path to specify location. "
+                    "Checked Steam and standalone paths."
                 )
                 raise FileNotFoundError(msg)
 

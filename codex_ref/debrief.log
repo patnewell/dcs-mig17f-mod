@@ -1,0 +1,540 @@
+mission_file_path	=	"C:\\Users\\patri\\Saved Games\\DCS\\Missions\\MiG17F_FM_Test_pat_man.miz"
+callsign	=	"New callsign"
+graveyard = 
+{
+	[1] = 
+	{
+		coalition	=	"red",
+		x	=	-184187.6875,
+		country	=	0,
+		heading	=	6.2831853071796,
+		alt	=	1.6027030944824,
+		y	=	200000,
+		type	=	"vwv_mig17f",
+	}, -- end of [1]
+	[2] = 
+	{
+		coalition	=	"red",
+		x	=	-255899.765625,
+		country	=	0,
+		heading	=	6.2831853071796,
+		alt	=	1.6081674098969,
+		y	=	230000,
+		type	=	"vwv_mig17f",
+	}, -- end of [2]
+	[3] = 
+	{
+		coalition	=	"red",
+		x	=	-238861.546875,
+		country	=	0,
+		heading	=	6.2831853071796,
+		alt	=	1.6093182563782,
+		y	=	200000,
+		type	=	"vwv_mig17f",
+	}, -- end of [3]
+	[4] = 
+	{
+		coalition	=	"red",
+		x	=	-289635,
+		country	=	0,
+		heading	=	5.6259516517269,
+		alt	=	1.5187767744064,
+		y	=	194323.53125,
+		type	=	"vwv_mig17f",
+	}, -- end of [4]
+	[5] = 
+	{
+		coalition	=	"red",
+		x	=	-260000,
+		country	=	0,
+		heading	=	1.57079631487,
+		alt	=	1.6816115379333,
+		y	=	247929.53125,
+		type	=	"vwv_mig17f",
+	}, -- end of [5]
+	[6] = 
+	{
+		coalition	=	"red",
+		x	=	-290210.46875,
+		country	=	0,
+		heading	=	0.39175779024233,
+		alt	=	1.5626937150955,
+		y	=	193467.65625,
+		type	=	"vwv_mig17f",
+	}, -- end of [6]
+	[7] = 
+	{
+		coalition	=	"red",
+		x	=	-290568.84375,
+		country	=	0,
+		heading	=	2.0169518629657,
+		alt	=	1.6743128299713,
+		y	=	191849.078125,
+		type	=	"vwv_mig17f",
+	}, -- end of [7]
+	[8] = 
+	{
+		coalition	=	"red",
+		x	=	-251700.140625,
+		country	=	0,
+		heading	=	0.92790443101992,
+		alt	=	1.6747542619705,
+		y	=	245451.078125,
+		type	=	"vwv_mig17f",
+	}, -- end of [8]
+} -- end of graveyard
+world_state = 
+{
+	[1] = 
+	{
+		alt	=	19.991018295288,
+		N_obj	=	1,
+		dead	=	false,
+		type	=	"vwv_mig17f",
+		unitId	=	2,
+		heading	=	1.57079631487,
+		y	=	290746.53125,
+		hidden	=	false,
+		country	=	0,
+		coalition	=	"red",
+		life	=	20,
+		x	=	-275000,
+		payload = 
+		{
+			pylons = 	{},
+			fuel	=	687,
+			flare	=	0,
+			chaff	=	0,
+			gun	=	100,
+		}, -- end of payload
+		goto	=	1,
+		inAir	=	true,
+		groupId	=	2,
+		speed	=	79.136703491211,
+	}, -- end of [1]
+	[2] = 
+	{
+		alt	=	288.61892700195,
+		N_obj	=	1,
+		dead	=	false,
+		type	=	"vwv_mig17f",
+		unitId	=	3,
+		heading	=	1.57079631487,
+		y	=	274777.78125,
+		hidden	=	false,
+		country	=	0,
+		coalition	=	"red",
+		life	=	20,
+		x	=	-280000,
+		payload = 
+		{
+			pylons = 	{},
+			fuel	=	761,
+			flare	=	0,
+			chaff	=	0,
+			gun	=	100,
+		}, -- end of payload
+		goto	=	1,
+		inAir	=	true,
+		groupId	=	3,
+		speed	=	105.50165557861,
+	}, -- end of [2]
+	[3] = 
+	{
+		alt	=	20.809314727783,
+		N_obj	=	1,
+		dead	=	false,
+		type	=	"vwv_mig17f",
+		unitId	=	11,
+		heading	=	6.2831853071796,
+		y	=	170000,
+		hidden	=	false,
+		country	=	0,
+		coalition	=	"red",
+		life	=	20,
+		x	=	-215227.765625,
+		payload = 
+		{
+			pylons = 	{},
+			fuel	=	693,
+			flare	=	0,
+			chaff	=	0,
+			gun	=	100,
+		}, -- end of payload
+		goto	=	1,
+		inAir	=	true,
+		groupId	=	11,
+		speed	=	81.442588806152,
+	}, -- end of [3]
+} -- end of world_state
+mission_file_mark	=	1764817160
+mission_time	=	1008.804
+warehouses = 
+{
+	airports = 
+	{
+		[12] = 
+		{
+			unlimitedFuel	=	true,
+			unlimitedMunitions	=	true,
+			unlimitedAircrafts	=	true,
+		}, -- end of [12]
+		[13] = 
+		{
+			unlimitedFuel	=	true,
+			unlimitedMunitions	=	true,
+			unlimitedAircrafts	=	true,
+		}, -- end of [13]
+		[14] = 
+		{
+			unlimitedFuel	=	true,
+			unlimitedMunitions	=	true,
+			unlimitedAircrafts	=	true,
+		}, -- end of [14]
+		[15] = 
+		{
+			unlimitedFuel	=	true,
+			unlimitedMunitions	=	true,
+			unlimitedAircrafts	=	true,
+		}, -- end of [15]
+		[16] = 
+		{
+			unlimitedFuel	=	true,
+			unlimitedMunitions	=	true,
+			unlimitedAircrafts	=	true,
+		}, -- end of [16]
+		[17] = 
+		{
+			unlimitedFuel	=	true,
+			unlimitedMunitions	=	true,
+			unlimitedAircrafts	=	true,
+		}, -- end of [17]
+		[18] = 
+		{
+			unlimitedFuel	=	true,
+			unlimitedMunitions	=	true,
+			unlimitedAircrafts	=	true,
+		}, -- end of [18]
+		[19] = 
+		{
+			unlimitedFuel	=	true,
+			unlimitedMunitions	=	true,
+			unlimitedAircrafts	=	true,
+		}, -- end of [19]
+		[20] = 
+		{
+			unlimitedFuel	=	true,
+			unlimitedMunitions	=	true,
+			unlimitedAircrafts	=	true,
+		}, -- end of [20]
+		[21] = 
+		{
+			unlimitedFuel	=	true,
+			unlimitedMunitions	=	true,
+			unlimitedAircrafts	=	true,
+		}, -- end of [21]
+		[22] = 
+		{
+			unlimitedFuel	=	true,
+			unlimitedMunitions	=	true,
+			unlimitedAircrafts	=	true,
+		}, -- end of [22]
+		[23] = 
+		{
+			unlimitedFuel	=	true,
+			unlimitedMunitions	=	true,
+			unlimitedAircrafts	=	true,
+		}, -- end of [23]
+		[24] = 
+		{
+			unlimitedFuel	=	true,
+			unlimitedMunitions	=	true,
+			unlimitedAircrafts	=	true,
+		}, -- end of [24]
+		[25] = 
+		{
+			unlimitedFuel	=	true,
+			unlimitedMunitions	=	true,
+			unlimitedAircrafts	=	true,
+		}, -- end of [25]
+		[26] = 
+		{
+			unlimitedFuel	=	true,
+			unlimitedMunitions	=	true,
+			unlimitedAircrafts	=	true,
+		}, -- end of [26]
+		[27] = 
+		{
+			unlimitedFuel	=	true,
+			unlimitedMunitions	=	true,
+			unlimitedAircrafts	=	true,
+		}, -- end of [27]
+		[28] = 
+		{
+			unlimitedFuel	=	true,
+			unlimitedMunitions	=	true,
+			unlimitedAircrafts	=	true,
+		}, -- end of [28]
+		[29] = 
+		{
+			unlimitedFuel	=	true,
+			unlimitedMunitions	=	true,
+			unlimitedAircrafts	=	true,
+		}, -- end of [29]
+		[30] = 
+		{
+			unlimitedFuel	=	true,
+			unlimitedMunitions	=	true,
+			unlimitedAircrafts	=	true,
+		}, -- end of [30]
+		[31] = 
+		{
+			unlimitedFuel	=	true,
+			unlimitedMunitions	=	true,
+			unlimitedAircrafts	=	true,
+		}, -- end of [31]
+		[32] = 
+		{
+			unlimitedFuel	=	true,
+			unlimitedMunitions	=	true,
+			unlimitedAircrafts	=	true,
+		}, -- end of [32]
+	}, -- end of airports
+	warehouses = 	{},
+} -- end of warehouses
+triggers_state = 	{}
+result	=	0
+events = 
+{
+	[1] = 
+	{
+		type	=	"mission start",
+		event_id	=	1,
+		t	=	0,
+		linked_event_id	=	0,
+		ta	=	43200,
+	}, -- end of [1]
+	[2] = 
+	{
+		linked_event_id	=	0,
+		t	=	0,
+		event_id	=	2,
+		type	=	"took control",
+	}, -- end of [2]
+	[3] = 
+	{
+		type	=	"pilot dead",
+		initiatorPilotName	=	"vwv_mig17f",
+		t	=	391.14,
+		initiator_unit_type	=	"vwv_mig17f",
+		initiator_object_id	=	16777472,
+		linked_event_id	=	0,
+		event_id	=	16,
+		initiator_coalition	=	1,
+		initiator_ws_type1	=	1,
+		initiatorMissionID	=	"1",
+	}, -- end of [3]
+	[4] = 
+	{
+		type	=	"crash",
+		initiatorPilotName	=	"vwv_mig17f",
+		t	=	391.14,
+		initiator_unit_type	=	"vwv_mig17f",
+		initiator_object_id	=	16777472,
+		linked_event_id	=	0,
+		event_id	=	18,
+		initiator_coalition	=	1,
+		initiator_ws_type1	=	1,
+		initiatorMissionID	=	"1",
+	}, -- end of [4]
+	[5] = 
+	{
+		type	=	"pilot dead",
+		initiatorPilotName	=	"vwv_mig17f",
+		t	=	401.58,
+		initiator_unit_type	=	"vwv_mig17f",
+		initiator_object_id	=	16778752,
+		linked_event_id	=	0,
+		event_id	=	19,
+		initiator_coalition	=	1,
+		initiator_ws_type1	=	1,
+		initiatorMissionID	=	"6",
+	}, -- end of [5]
+	[6] = 
+	{
+		type	=	"crash",
+		initiatorPilotName	=	"vwv_mig17f",
+		t	=	401.58,
+		initiator_unit_type	=	"vwv_mig17f",
+		initiator_object_id	=	16778752,
+		linked_event_id	=	0,
+		event_id	=	21,
+		initiator_coalition	=	1,
+		initiator_ws_type1	=	1,
+		initiatorMissionID	=	"6",
+	}, -- end of [6]
+	[7] = 
+	{
+		type	=	"pilot dead",
+		initiatorPilotName	=	"vwv_mig17f",
+		t	=	416.16,
+		initiator_unit_type	=	"vwv_mig17f",
+		initiator_object_id	=	16778240,
+		linked_event_id	=	0,
+		event_id	=	22,
+		initiator_coalition	=	1,
+		initiator_ws_type1	=	1,
+		initiatorMissionID	=	"4",
+	}, -- end of [7]
+	[8] = 
+	{
+		type	=	"crash",
+		initiatorPilotName	=	"vwv_mig17f",
+		t	=	416.16,
+		initiator_unit_type	=	"vwv_mig17f",
+		initiator_object_id	=	16778240,
+		linked_event_id	=	0,
+		event_id	=	24,
+		initiator_coalition	=	1,
+		initiator_ws_type1	=	1,
+		initiatorMissionID	=	"4",
+	}, -- end of [8]
+	[9] = 
+	{
+		type	=	"pilot dead",
+		initiatorPilotName	=	"vwv_mig17f",
+		t	=	424.9,
+		initiator_unit_type	=	"vwv_mig17f",
+		initiator_object_id	=	16779008,
+		linked_event_id	=	0,
+		event_id	=	25,
+		initiator_coalition	=	1,
+		initiator_ws_type1	=	1,
+		initiatorMissionID	=	"7",
+	}, -- end of [9]
+	[10] = 
+	{
+		type	=	"crash",
+		initiatorPilotName	=	"vwv_mig17f",
+		t	=	424.9,
+		initiator_unit_type	=	"vwv_mig17f",
+		initiator_object_id	=	16779008,
+		linked_event_id	=	0,
+		event_id	=	27,
+		initiator_coalition	=	1,
+		initiator_ws_type1	=	1,
+		initiatorMissionID	=	"7",
+	}, -- end of [10]
+	[11] = 
+	{
+		type	=	"pilot dead",
+		initiatorPilotName	=	"vwv_mig17f",
+		t	=	442.62,
+		initiator_unit_type	=	"vwv_mig17f",
+		initiator_object_id	=	16779264,
+		linked_event_id	=	0,
+		event_id	=	28,
+		initiator_coalition	=	1,
+		initiator_ws_type1	=	1,
+		initiatorMissionID	=	"8",
+	}, -- end of [11]
+	[12] = 
+	{
+		type	=	"crash",
+		initiatorPilotName	=	"vwv_mig17f",
+		t	=	442.62,
+		initiator_unit_type	=	"vwv_mig17f",
+		initiator_object_id	=	16779264,
+		linked_event_id	=	0,
+		event_id	=	30,
+		initiator_coalition	=	1,
+		initiator_ws_type1	=	1,
+		initiatorMissionID	=	"8",
+	}, -- end of [12]
+	[13] = 
+	{
+		type	=	"pilot dead",
+		initiatorPilotName	=	"vwv_mig17f",
+		t	=	530.88,
+		initiator_unit_type	=	"vwv_mig17f",
+		initiator_object_id	=	16779776,
+		linked_event_id	=	0,
+		event_id	=	31,
+		initiator_coalition	=	1,
+		initiator_ws_type1	=	1,
+		initiatorMissionID	=	"10",
+	}, -- end of [13]
+	[14] = 
+	{
+		type	=	"crash",
+		initiatorPilotName	=	"vwv_mig17f",
+		t	=	530.88,
+		initiator_unit_type	=	"vwv_mig17f",
+		initiator_object_id	=	16779776,
+		linked_event_id	=	0,
+		event_id	=	33,
+		initiator_coalition	=	1,
+		initiator_ws_type1	=	1,
+		initiatorMissionID	=	"10",
+	}, -- end of [14]
+	[15] = 
+	{
+		type	=	"pilot dead",
+		initiatorPilotName	=	"vwv_mig17f",
+		t	=	824.5,
+		initiator_unit_type	=	"vwv_mig17f",
+		initiator_object_id	=	16779520,
+		linked_event_id	=	0,
+		event_id	=	34,
+		initiator_coalition	=	1,
+		initiator_ws_type1	=	1,
+		initiatorMissionID	=	"9",
+	}, -- end of [15]
+	[16] = 
+	{
+		type	=	"crash",
+		initiatorPilotName	=	"vwv_mig17f",
+		t	=	824.5,
+		initiator_unit_type	=	"vwv_mig17f",
+		initiator_object_id	=	16779520,
+		linked_event_id	=	0,
+		event_id	=	36,
+		initiator_coalition	=	1,
+		initiator_ws_type1	=	1,
+		initiatorMissionID	=	"9",
+	}, -- end of [16]
+	[17] = 
+	{
+		type	=	"pilot dead",
+		initiatorPilotName	=	"vwv_mig17f",
+		t	=	850.1,
+		initiator_unit_type	=	"vwv_mig17f",
+		initiator_object_id	=	16778496,
+		linked_event_id	=	0,
+		event_id	=	37,
+		initiator_coalition	=	1,
+		initiator_ws_type1	=	1,
+		initiatorMissionID	=	"5",
+	}, -- end of [17]
+	[18] = 
+	{
+		type	=	"crash",
+		initiatorPilotName	=	"vwv_mig17f",
+		t	=	850.1,
+		initiator_unit_type	=	"vwv_mig17f",
+		initiator_object_id	=	16778496,
+		linked_event_id	=	0,
+		event_id	=	39,
+		initiator_coalition	=	1,
+		initiator_ws_type1	=	1,
+		initiatorMissionID	=	"5",
+	}, -- end of [18]
+	[19] = 
+	{
+		type	=	"mission end",
+		comment	=	"winner: , msg: ",
+		t	=	1008.804,
+		linked_event_id	=	0,
+		event_id	=	41,
+	}, -- end of [19]
+} -- end of events

@@ -277,8 +277,9 @@ MIG17_FUEL_MAX_KG = 1140    # Internal fuel capacity (M_fuel_max)
 # - Turn tests: 50% fuel for typical combat maneuvering weight
 MIG17_FUEL_FRACTION_DEFAULT = 0.50  # 50% internal fuel (570 kg)
 
-# Multi-FM variant lane offset (80 km between variants)
-VARIANT_X_OFFSET_M = 80000
+# Multi-FM variant lane offset (40 km between variants)
+# Reduced from 80km to keep all variants over water
+VARIANT_X_OFFSET_M = 40000
 
 
 @dataclass(frozen=True)
@@ -473,9 +474,12 @@ def build_mission(
     russia = red.add_country(countries.Russia())
 
     groups: list[str] = []
-    # Black Sea, grid CH area (over ocean)
-    x_origin = -275000
-    y_origin = 200000
+    # Black Sea - deep central area over water
+    # DCS Caucasus: X is north-south (negative=north), Y is east-west (negative=west)
+    # Origin placed well into Black Sea center to ensure all test patterns stay over water
+    # Test patterns extend up to 80nm (~150km) and variants spread 320km along X axis
+    x_origin = -100000
+    y_origin = -300000
 
     def orbit_task(
         *, race_track: bool, altitude_ft: float, speed_kts: float, radius_nm: float

@@ -243,6 +243,59 @@ def scale_engine_pfor(lua_content: str, scales: Scales) -> str:
     return lua_content[:table_start] + new_engine_section + lua_content[engine_table_end:]
 
 
+def patch_entry_lua(entry_content: str, variant: Variant) -> str:
+    """Patch entry.lua with unique identifiers for this variant.
+
+    DCS requires each mod to have unique identifiers in entry.lua:
+    - self_ID: unique plugin identifier
+    - displayName: shown in module manager
+    - fileMenuName: shown in file menus
+    - update_id: for update checking
+    - LogBook.type: for pilot logbook
+    """
+    # Extract short variant suffix from dcs_type_name (e.g., "vwv_mig17f_fm0" -> "fm0")
+    variant_suffix = variant.dcs_type_name.split("_")[-1]
+
+    # Patch self_ID (line like: self_ID = "tetet_mig17f")
+    entry_content = re.sub(
+        r'(self_ID\s*=\s*["\'])([^"\']+)(["\'])',
+        rf'\g<1>\g<2>_{variant_suffix}\g<3>',
+        entry_content,
+    )
+
+    # Patch displayName (line like: displayName = _("mig17f"),)
+    # Use the variant's display_name
+    entry_content = re.sub(
+        r'(displayName\s*=\s*_\(["\'])([^"\']+)(["\'])',
+        rf'\g<1>{variant.display_name}\g<3>',
+        entry_content,
+    )
+
+    # Patch fileMenuName similarly
+    entry_content = re.sub(
+        r'(fileMenuName\s*=\s*_\(["\'])([^"\']+)(["\'])',
+        rf'\g<1>{variant.short_name} MiG-17F\g<3>',
+        entry_content,
+    )
+
+    # Patch update_id
+    entry_content = re.sub(
+        r'(update_id\s*=\s*["\'])([^"\']+)(["\'])',
+        rf'\g<1>\g<2>_{variant_suffix}\g<3>',
+        entry_content,
+    )
+
+    # Patch LogBook type (inside LogBook = { { ... type = "mig17f" ... } })
+    entry_content = re.sub(
+        r'(LogBook\s*=\s*\{\s*\{\s*[^}]*type\s*=\s*["\'])([^"\']+)(["\'])',
+        rf'\g<1>\g<2>_{variant_suffix}\g<3>',
+        entry_content,
+        flags=re.DOTALL,
+    )
+
+    return entry_content
+
+
 def patch_identity_fields(lua_content: str, variant: Variant) -> str:
     """Patch the Name, DisplayName, and shape_table_data.username fields."""
     # Patch Name field
@@ -326,6 +379,16 @@ def build_variant(
     lua_content = lua_path.read_text(encoding="utf-8")
     modified_content = apply_variant_modifications(lua_content, variant)
     lua_path.write_text(modified_content, encoding="utf-8")
+
+    # Modify entry.lua with unique identifiers
+    entry_path = variant_path / "entry.lua"
+    if entry_path.exists():
+        entry_content = entry_path.read_text(encoding="utf-8")
+        modified_entry = patch_entry_lua(entry_content, variant)
+        entry_path.write_text(modified_entry, encoding="utf-8")
+        LOGGER.info("Patched entry.lua with unique IDs for %s", variant.short_name)
+    else:
+        LOGGER.warning("entry.lua not found in variant: %s", variant_path)
 
     LOGGER.info(
         "Applied scales to %s: cx0=%.2f, polar=%.2f, engine_drag=%.2f, pfor=%.2f",

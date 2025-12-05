@@ -1,0 +1,152 @@
+{
+  "version": 1,
+  "aircraft": {
+    "id": "vwv_mig17f",
+    "base_mod_dir": "[VWV] MiG-17",
+    "base_display_name": "[VWV] MiG-17F \"Fresco C\"",
+    "description": "Baseline VWV MiG-17F SFM; variants are multiplicative perturbations around this."
+  },
+  "scaling_model": {
+    "cx0": "Multiply all Cx0 values in SFM_Data.aerodynamics.table_data by this factor.",
+    "polar": "Multiply all B2 and B4 values in SFM_Data.aerodynamics.table_data by this factor.",
+    "engine_drag": "Multiply SFM_Data.engine.dcx_eng by this factor.",
+    "pfor": "Multiply all Pfor values in SFM_Data.engine.table_data by this factor."
+  },
+  "variants": [
+    {
+      "variant_id": "FM0_BASE",
+      "short_name": "FM0",
+      "mod_dir_name": "[VWV] MiG-17_FM0_BASE",
+      "dcs_type_name": "vwv_mig17f_fm0",
+      "shape_username": "mig17f_fm0",
+      "display_name": "[VWV] MiG-17F FM0 Baseline (unmodified)",
+      "scales": {
+        "cx0": 1.0,
+        "polar": 1.0,
+        "engine_drag": 1.0,
+        "pfor": 1.0
+      },
+      "notes": "Direct copy of current SFM; used as control."
+    },
+    {
+      "variant_id": "FM1_CX0_0.5",
+      "short_name": "FM1",
+      "mod_dir_name": "[VWV] MiG-17_FM1_CX0_0.5",
+      "dcs_type_name": "vwv_mig17f_fm1",
+      "shape_username": "mig17f_fm1",
+      "display_name": "[VWV] MiG-17F FM1 Cx0 0.5x",
+      "scales": {
+        "cx0": 0.5,
+        "polar": 1.0,
+        "engine_drag": 1.0,
+        "pfor": 1.0
+      },
+      "notes": "Halve parasite drag (Cx0) only; isolates effect of zero-lift drag."
+    },
+    {
+      "variant_id": "FM2_POLAR_0.5",
+      "short_name": "FM2",
+      "mod_dir_name": "[VWV] MiG-17_FM2_POLAR_0.5",
+      "dcs_type_name": "vwv_mig17f_fm2",
+      "shape_username": "mig17f_fm2",
+      "display_name": "[VWV] MiG-17F FM2 Polar 0.5x",
+      "scales": {
+        "cx0": 1.0,
+        "polar": 0.5,
+        "engine_drag": 1.0,
+        "pfor": 1.0
+      },
+      "notes": "Halve induced/transonic drag (B2/B4) only; isolates effect of lift-related drag."
+    },
+    {
+      "variant_id": "FM3_ENGDRAG_0.3",
+      "short_name": "FM3",
+      "mod_dir_name": "[VWV] MiG-17_FM3_ENGDRAG_0.3",
+      "dcs_type_name": "vwv_mig17f_fm3",
+      "shape_username": "mig17f_fm3",
+      "display_name": "[VWV] MiG-17F FM3 Engine drag 0.3x",
+      "scales": {
+        "cx0": 1.0,
+        "polar": 1.0,
+        "engine_drag": 0.3,
+        "pfor": 1.0
+      },
+      "notes": "Strong reduction in engine drag fudge only; isolates dcx_eng impact on Vmax."
+    },
+    {
+      "variant_id": "FM4_PFOR_1.1",
+      "short_name": "FM4",
+      "mod_dir_name": "[VWV] MiG-17_FM4_PFOR_1.1",
+      "dcs_type_name": "vwv_mig17f_fm4",
+      "shape_username": "mig17f_fm4",
+      "display_name": "[VWV] MiG-17F FM4 AB thrust 1.1x",
+      "scales": {
+        "cx0": 1.0,
+        "polar": 1.0,
+        "engine_drag": 1.0,
+        "pfor": 1.1
+      },
+      "notes": "Increase afterburner thrust (Pfor) by 10% only; isolates thrust effect."
+    },
+    {
+      "variant_id": "FM5_DRAG0.6_ALL",
+      "short_name": "FM5",
+      "mod_dir_name": "[VWV] MiG-17_FM5_DRAG0.6_ALL",
+      "dcs_type_name": "vwv_mig17f_fm5",
+      "shape_username": "mig17f_fm5",
+      "display_name": "[VWV] MiG-17F FM5 Drag 0.6x (all)",
+      "scales": {
+        "cx0": 0.6,
+        "polar": 0.6,
+        "engine_drag": 0.6,
+        "pfor": 1.0
+      },
+      "notes": "Moderate reduction in all drag components; candidate near expected region."
+    },
+    {
+      "variant_id": "FM6_DRAG0.5_ALL",
+      "short_name": "FM6",
+      "mod_dir_name": "[VWV] MiG-17_FM6_DRAG0.5_ALL",
+      "dcs_type_name": "vwv_mig17f_fm6",
+      "shape_username": "mig17f_fm6",
+      "display_name": "[VWV] MiG-17F FM6 Drag 0.5x (all)",
+      "scales": {
+        "cx0": 0.5,
+        "polar": 0.5,
+        "engine_drag": 0.5,
+        "pfor": 1.0
+      },
+      "notes": "Aggressive drag reduction across the board; likely closer to target Vmax."
+    },
+    {
+      "variant_id": "FM7_DRAG0.5_ALL_AB1.05",
+      "short_name": "FM7",
+      "mod_dir_name": "[VWV] MiG-17_FM7_DRAG0.5_ALL_AB1.05",
+      "dcs_type_name": "vwv_mig17f_fm7",
+      "shape_username": "mig17f_fm7",
+      "display_name": "[VWV] MiG-17F FM7 Drag 0.5x + AB 1.05x",
+      "scales": {
+        "cx0": 0.5,
+        "polar": 0.5,
+        "engine_drag": 0.5,
+        "pfor": 1.05
+      },
+      "notes": "Like FM6 but with +5% AB thrust; checks sensitivity of climb/Vmax to small thrust boost."
+    },
+    {
+      "variant_id": "FM8_DRAG0.5_ALL_AB1.10",
+      "short_name": "FM8",
+      "mod_dir_name": "[VWV] MiG-17_FM8_DRAG0.5_ALL_AB1.10",
+      "dcs_type_name": "vwv_mig17f_fm8",
+      "shape_username": "mig17f_fm8",
+      "display_name": "[VWV] MiG-17F FM8 Drag 0.5x + AB 1.10x",
+      "scales": {
+        "cx0": 0.5,
+        "polar": 0.5,
+        "engine_drag": 0.5,
+        "pfor": 1.10
+      },
+      "notes": "Like FM6 but with +10% AB thrust; upper bound for thrust sensitivity."
+    }
+  ]
+}

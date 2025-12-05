@@ -3,10 +3,19 @@
 This script builds a mission with acceleration, climb, turn, and deceleration
 profiles for the VWV MiG-17F mod. It requires Python 3 and the ``dcs`` library
 (pydcs). Install dependencies with ``pip install dcs``.
+
+Multi-FM Mode:
+    When a variant JSON file is present at <variant-root>/mig17f_fm_variants.json,
+    the script generates test groups for each FM variant, offset along the X-axis.
+    Group names are prefixed with the variant short name (e.g., FM0_ACCEL_SL).
+
+Single-FM Mode (backwards compatible):
+    When no variant JSON is found, behaves as before with a single aircraft type.
 """
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import re
 from dataclasses import dataclass
@@ -19,8 +28,9 @@ from dcs import triggers, action, weather
 from dcs.terrain import caucasus
 
 
-# Lua script for comprehensive flight model testing
+# Lua script template for comprehensive flight model testing
 # Uses structured logging format for automated parsing
+# The {GROUPS_LUA_ARRAY} placeholder is replaced with the actual group list
 #
 # Output format in dcs.log:
 #   [MIG17_FM_TEST] DATA,<group>,<elapsed_s>,<alt_ft>,<spd_kt>,<vspd_fpm>,<mach>
@@ -28,17 +38,11 @@ from dcs.terrain import caucasus
 #   [MIG17_FM_TEST] ALT_GATE,<group>,<gate_ft>,<elapsed_s>,<climb_rate_fpm>
 #   [MIG17_FM_TEST] VMAX,<group>,<speed_kt>,<alt_ft>,<mach>
 #   [MIG17_FM_TEST] SUMMARY,<group>,<max_spd_kt>,<max_alt_ft>,<max_vspd_fpm>
-LOGGER_LUA = r'''
+LOGGER_LUA_TEMPLATE = r'''
 do
   local MIG17_TEST = {}
 
-  MIG17_TEST.GROUPS = {
-    "ACCEL_SL", "ACCEL_10K", "ACCEL_20K",
-    "CLIMB_SL", "CLIMB_10K",
-    "TURN_10K_300", "TURN_10K_350", "TURN_10K_400",
-    "VMAX_SL", "VMAX_10K",
-    "DECEL_10K",
-  }
+  MIG17_TEST.GROUPS = {GROUPS_LUA_ARRAY}
 
   MIG17_TEST.samplePeriod = 0.5
   MIG17_TEST.state = {}
@@ -238,6 +242,18 @@ do
 end
 '''
 
+# Static Lua for backwards compatibility (single-FM mode)
+LOGGER_LUA_STATIC = LOGGER_LUA_TEMPLATE.replace(
+    "{GROUPS_LUA_ARRAY}",
+    """{
+    "ACCEL_SL", "ACCEL_10K", "ACCEL_20K",
+    "CLIMB_SL", "CLIMB_10K",
+    "TURN_10K_300", "TURN_10K_350", "TURN_10K_400",
+    "VMAX_SL", "VMAX_10K",
+    "DECEL_10K",
+  }""",
+)
+
 
 LOGGER = logging.getLogger(__name__)
 
@@ -259,6 +275,18 @@ MIG17_FUEL_MAX_KG = 1140    # Internal fuel capacity (M_fuel_max)
 # - Climb tests: Full fuel to match historical "clean config from takeoff" data
 # - Turn tests: 50% fuel for typical combat maneuvering weight
 MIG17_FUEL_FRACTION_DEFAULT = 0.50  # 50% internal fuel (570 kg)
+
+# Multi-FM variant lane offset (80 km between variants)
+VARIANT_X_OFFSET_M = 80000
+
+
+@dataclass(frozen=True)
+class VariantDescriptor:
+    """Minimal descriptor for an FM variant in multi-FM mode."""
+
+    short_name: str
+    mod_dir_name: str
+    dcs_type_name: str
 
 
 @dataclass(frozen=True)
@@ -282,6 +310,33 @@ class WaypointSpec:
     def speed_mps(self, default_speed_kts: float) -> float:
         speed_kts = self.speed_kts if self.speed_kts is not None else default_speed_kts
         return speed_kts * KTS_TO_MPS
+
+    def offset_x(self, dx: float) -> "WaypointSpec":
+        """Return a new WaypointSpec with X coordinate offset."""
+        return WaypointSpec(
+            x=self.x + dx,
+            y=self.y,
+            alt_ft=self.alt_ft,
+            speed_kts=self.speed_kts,
+            tasks=self.tasks,
+        )
+
+
+def load_variant_descriptors(json_path: Path) -> list[VariantDescriptor]:
+    """Load variant descriptors from the FM variants JSON file."""
+    with json_path.open("r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    descriptors = []
+    for v in data["variants"]:
+        descriptors.append(
+            VariantDescriptor(
+                short_name=v["short_name"],
+                mod_dir_name=v["mod_dir_name"],
+                dcs_type_name=v["dcs_type_name"],
+            )
+        )
+    return descriptors
 
 
 def detect_type_name(mod_root: Path) -> Optional[str]:
@@ -339,9 +394,49 @@ def ensure_parent(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
 
-def build_mission(type_name: str) -> tuple[mission.Mission, list[str]]:
-    """Construct the mission object populated with test groups."""
+def render_logger_lua(group_names: list[str]) -> str:
+    """Render the Lua logger script with the actual group names."""
+    # Build Lua array string
+    quoted_names = [f'"{name}"' for name in group_names]
+    # Format as multi-line for readability if many groups
+    if len(quoted_names) > 15:
+        array_content = ",\n    ".join(quoted_names)
+        lua_array = f"{{\n    {array_content},\n  }}"
+    else:
+        lua_array = "{\n    " + ", ".join(quoted_names) + ",\n  }"
 
+    return LOGGER_LUA_TEMPLATE.replace("{GROUPS_LUA_ARRAY}", lua_array)
+
+
+# Base test patterns used by both single-FM and multi-FM modes
+BASE_TEST_PATTERNS = [
+    "ACCEL_SL",
+    "ACCEL_10K",
+    "ACCEL_20K",
+    "CLIMB_SL",
+    "CLIMB_10K",
+    "TURN_10K_300",
+    "TURN_10K_350",
+    "TURN_10K_400",
+    "VMAX_SL",
+    "VMAX_10K",
+    "DECEL_10K",
+]
+
+
+def build_mission(
+    type_name: str,
+    variants: Optional[list[VariantDescriptor]] = None,
+) -> tuple[mission.Mission, list[str]]:
+    """Construct the mission object populated with test groups.
+
+    Args:
+        type_name: DCS type name for single-FM mode (used when variants is None)
+        variants: List of variant descriptors for multi-FM mode
+
+    Returns:
+        Tuple of (mission, list of group names)
+    """
     miz = mission.Mission()
     miz.terrain = caucasus.Caucasus()
     miz.start_time = datetime(2024, 6, 1, 12, 0, tzinfo=timezone.utc)
@@ -361,84 +456,11 @@ def build_mission(type_name: str) -> tuple[mission.Mission, list[str]]:
 
     red = miz.coalition["red"]
     russia = red.add_country(countries.Russia())
-    custom_plane = get_or_create_custom_plane(type_name)
 
     groups: list[str] = []
     # Black Sea, grid CH area (over ocean)
     x_origin = -275000
     y_origin = 200000
-
-    def add_group(
-        name: str,
-        alt_ft: float,
-        speed_kts: float,
-        waypoints: Iterable[WaypointSpec],
-        fuel_fraction: float = MIG17_FUEL_FRACTION_DEFAULT,
-    ) -> None:
-        """Add a flight group to the mission.
-
-        Args:
-            name: Group name (used for logging and identification)
-            alt_ft: Initial altitude in feet
-            speed_kts: Initial speed in knots
-            waypoints: Iterable of WaypointSpec defining the flight path
-            fuel_fraction: Fuel load as fraction of max (0.0-1.0), default 50%
-
-        Note on fuel and weight:
-            The MiG-17F's performance varies significantly with fuel load:
-            - Empty weight: 3920 kg
-            - Full fuel (+1140 kg): 5060 kg clean, 5345 kg nominal
-            - Historical Vmax/ROC data typically at nominal weight (full fuel)
-
-            The AI will use afterburner (ForsRUD=1) when throttle is at maximum.
-            Afterburner increases fuel consumption by ~2.06x (cefor/cemax ratio).
-        """
-        waypoint_list = list(waypoints)
-        if not waypoint_list:
-            msg = f"Group {name} has no waypoints defined"
-            raise ValueError(msg)
-
-        altitude_m = alt_ft * FT_TO_METERS
-        first_wp = waypoint_list[0]
-        grp = miz.flight_group_inflight(
-            country=russia,
-            name=name,
-            aircraft_type=custom_plane,
-            position=mapping.Point(first_wp.x, first_wp.y, altitude_m),
-            altitude=altitude_m,
-            speed=speed_kts * 1.852,
-            maintask=task.CAP,
-            group_size=1,
-        )
-        if grp not in russia.plane_group:
-            russia.add_aircraft_group(grp)
-
-        first_unit = grp.units[0]
-        first_unit.livery_id = getattr(first_unit, "livery_id", None) or "default"
-
-        # Set fuel explicitly using the MiG-17F's known fuel capacity
-        # Do NOT rely on first_unit.fuel having a valid initial value
-        fuel_kg = int(MIG17_FUEL_MAX_KG * max(0.0, min(1.0, fuel_fraction)))
-        first_unit.fuel = fuel_kg
-
-        start_point = grp.points[0]
-        start_point.position.x = first_wp.x
-        start_point.position.y = first_wp.y
-        start_point.alt = altitude_m
-        start_point.speed = speed_kts * KTS_TO_MPS
-
-        for wp in waypoint_list[1:]:
-            wp_alt_m = wp.altitude_meters(alt_ft)
-            pt = grp.add_waypoint(
-                pos=mapping.Point(wp.x, wp.y, wp_alt_m),
-                altitude=wp_alt_m,
-                speed=wp.speed_kph(speed_kts),
-            )
-            pt.speed = wp.speed_mps(speed_kts)
-            pt.alt = wp_alt_m
-            for wp_task in wp.tasks:
-                pt.tasks.append(wp_task)
-        groups.append(name)
 
     def orbit_task(
         *, race_track: bool, altitude_ft: float, speed_kts: float, radius_nm: float
@@ -464,219 +486,346 @@ def build_mission(type_name: str) -> tuple[mission.Mission, list[str]]:
         msg = "Orbit task is not available in the installed dcs library"
         raise RuntimeError(msg)
 
-    add_group(
-        "ACCEL_SL",
-        alt_ft=1000,
-        speed_kts=230,
-        waypoints=[
-            WaypointSpec(x=x_origin + 5000, y=y_origin),
-            WaypointSpec(
-                x=x_origin + 5000 + 50 * NM_TO_METERS, y=y_origin, speed_kts=800
-            ),
-            WaypointSpec(
-                x=x_origin + 5000 + 60 * NM_TO_METERS,
-                y=y_origin,
-                speed_kts=800,
-                tasks=(
-                    orbit_task(
-                        race_track=True, altitude_ft=1000, speed_kts=800, radius_nm=10
-                    ),
-                ),
-            ),
-        ],
-    )
+    def add_group(
+        name: str,
+        alt_ft: float,
+        speed_kts: float,
+        waypoints: Iterable[WaypointSpec],
+        fuel_fraction: float,
+        custom_plane: planes.PlaneType,
+    ) -> None:
+        """Add a flight group to the mission.
 
-    add_group(
-        "ACCEL_10K",
-        alt_ft=10000,
-        speed_kts=300,
-        waypoints=[
-            WaypointSpec(x=x_origin, y=y_origin + 5000),
-            WaypointSpec(
-                x=x_origin, y=y_origin + 5000 + 50 * NM_TO_METERS, speed_kts=800
-            ),
-            WaypointSpec(
-                x=x_origin,
-                y=y_origin + 5000 + 60 * NM_TO_METERS,
-                speed_kts=800,
-                tasks=(
-                    orbit_task(
-                        race_track=True,
-                        altitude_ft=10000,
-                        speed_kts=800,
-                        radius_nm=10,
-                    ),
-                ),
-            ),
-        ],
-    )
+        Args:
+            name: Group name (used for logging and identification)
+            alt_ft: Initial altitude in feet
+            speed_kts: Initial speed in knots
+            waypoints: Iterable of WaypointSpec defining the flight path
+            fuel_fraction: Fuel load as fraction of max (0.0-1.0)
+            custom_plane: The plane type to use for this group
+        """
+        waypoint_list = list(waypoints)
+        if not waypoint_list:
+            msg = f"Group {name} has no waypoints defined"
+            raise ValueError(msg)
 
-    add_group(
-        "ACCEL_20K",
-        alt_ft=20000,
-        speed_kts=300,
-        waypoints=[
-            WaypointSpec(x=x_origin - 5000, y=y_origin),
-            WaypointSpec(
-                x=x_origin - 5000, y=y_origin + 50 * NM_TO_METERS, speed_kts=800
-            ),
-            WaypointSpec(
-                x=x_origin - 5000,
-                y=y_origin + 60 * NM_TO_METERS,
-                speed_kts=800,
-                tasks=(
-                    orbit_task(
-                        race_track=True,
-                        altitude_ft=20000,
-                        speed_kts=800,
-                        radius_nm=10,
-                    ),
-                ),
-            ),
-        ],
-    )
+        altitude_m = alt_ft * FT_TO_METERS
+        first_wp = waypoint_list[0]
+        grp = miz.flight_group_inflight(
+            country=russia,
+            name=name,
+            aircraft_type=custom_plane,
+            position=mapping.Point(first_wp.x, first_wp.y, altitude_m),
+            altitude=altitude_m,
+            speed=speed_kts * 1.852,
+            maintask=task.CAP,
+            group_size=1,
+        )
+        if grp not in russia.plane_group:
+            russia.add_aircraft_group(grp)
 
-    # Climb tests - starting from low altitude, climbing to high altitude
-    # Target: 65 m/s (12,800 fpm) rate of climb
-    # Historical ROC data is at nominal weight (full internal fuel)
-    # Afterburner engages at full throttle (ForsRUD=1) providing 3380 kgf thrust
-    add_group(
-        "CLIMB_SL",
-        alt_ft=1000,
-        speed_kts=380,
-        waypoints=[
-            WaypointSpec(
-                x=x_origin + 15000,
-                y=y_origin + 15000,
-                alt_ft=1000,
-                speed_kts=380,
-            ),
-            WaypointSpec(
-                x=x_origin + 15000,
-                y=y_origin + 15000 + 30 * NM_TO_METERS,
-                alt_ft=40000,
-                speed_kts=380,
-            ),
-        ],
-        fuel_fraction=1.0,  # Full fuel for historical ROC comparison
-    )
+        first_unit = grp.units[0]
+        first_unit.livery_id = getattr(first_unit, "livery_id", None) or "default"
 
-    add_group(
-        "CLIMB_10K",
-        alt_ft=10000,
-        speed_kts=380,
-        waypoints=[
-            WaypointSpec(
-                x=x_origin + 20000,
-                y=y_origin - 15000,
-                alt_ft=10000,
-                speed_kts=380,
-            ),
-            WaypointSpec(
-                x=x_origin + 20000,
-                y=y_origin - 15000 + 30 * NM_TO_METERS,
-                alt_ft=40000,
-                speed_kts=380,
-            ),
-        ],
-        fuel_fraction=1.0,  # Full fuel for historical ROC comparison
-    )
+        # Set fuel explicitly using the MiG-17F's known fuel capacity
+        fuel_kg = int(MIG17_FUEL_MAX_KG * max(0.0, min(1.0, fuel_fraction)))
+        first_unit.fuel = fuel_kg
 
-    for speed in (300, 350, 400):
+        start_point = grp.points[0]
+        start_point.position.x = first_wp.x
+        start_point.position.y = first_wp.y
+        start_point.alt = altitude_m
+        start_point.speed = speed_kts * KTS_TO_MPS
+
+        for wp in waypoint_list[1:]:
+            wp_alt_m = wp.altitude_meters(alt_ft)
+            pt = grp.add_waypoint(
+                pos=mapping.Point(wp.x, wp.y, wp_alt_m),
+                altitude=wp_alt_m,
+                speed=wp.speed_kph(speed_kts),
+            )
+            pt.speed = wp.speed_mps(speed_kts)
+            pt.alt = wp_alt_m
+            for wp_task in wp.tasks:
+                pt.tasks.append(wp_task)
+        groups.append(name)
+
+    def build_test_groups_for_variant(
+        variant_idx: int,
+        group_prefix: str,
+        custom_plane: planes.PlaneType,
+    ) -> None:
+        """Build all test groups for a single variant/aircraft type.
+
+        Args:
+            variant_idx: Index of the variant (0 for first, used for X offset)
+            group_prefix: Prefix for group names (e.g., "FM0_" or "" for single-FM)
+            custom_plane: The plane type to use
+        """
+        x_offset = variant_idx * VARIANT_X_OFFSET_M
+
+        # Acceleration tests at sea level
         add_group(
-            f"TURN_10K_{speed}",
-            alt_ft=10000,
-            speed_kts=speed,
+            f"{group_prefix}ACCEL_SL",
+            alt_ft=1000,
+            speed_kts=230,
             waypoints=[
+                WaypointSpec(x=x_origin + 5000 + x_offset, y=y_origin),
                 WaypointSpec(
-                    x=x_origin - 15000,
-                    y=y_origin - speed * 20,
-                    alt_ft=10000,
-                    speed_kts=speed,
+                    x=x_origin + 5000 + 50 * NM_TO_METERS + x_offset,
+                    y=y_origin,
+                    speed_kts=800,
                 ),
                 WaypointSpec(
-                    x=x_origin - 15000,
-                    y=y_origin - speed * 20,
-                    alt_ft=10000,
-                    speed_kts=speed,
+                    x=x_origin + 5000 + 60 * NM_TO_METERS + x_offset,
+                    y=y_origin,
+                    speed_kts=800,
                     tasks=(
                         orbit_task(
-                            race_track=False,
-                            altitude_ft=10000,
-                            speed_kts=speed,
-                            radius_nm=6,
+                            race_track=True,
+                            altitude_ft=1000,
+                            speed_kts=800,
+                            radius_nm=10,
                         ),
                     ),
                 ),
             ],
+            fuel_fraction=MIG17_FUEL_FRACTION_DEFAULT,
+            custom_plane=custom_plane,
         )
 
-    add_group(
-        "DECEL_10K",
-        alt_ft=10000,
-        speed_kts=400,
-        waypoints=[
-            WaypointSpec(
-                x=x_origin + 30000,
-                y=y_origin,
-                alt_ft=10000,
-                speed_kts=400,
-            ),
-            WaypointSpec(
-                x=x_origin + 30000 + 40 * NM_TO_METERS,
-                y=y_origin,
-                alt_ft=10000,
-                speed_kts=200,
-            ),
-        ],
-    )
+        # Acceleration at 10K
+        add_group(
+            f"{group_prefix}ACCEL_10K",
+            alt_ft=10000,
+            speed_kts=300,
+            waypoints=[
+                WaypointSpec(x=x_origin + x_offset, y=y_origin + 5000),
+                WaypointSpec(
+                    x=x_origin + x_offset,
+                    y=y_origin + 5000 + 50 * NM_TO_METERS,
+                    speed_kts=800,
+                ),
+                WaypointSpec(
+                    x=x_origin + x_offset,
+                    y=y_origin + 5000 + 60 * NM_TO_METERS,
+                    speed_kts=800,
+                    tasks=(
+                        orbit_task(
+                            race_track=True,
+                            altitude_ft=10000,
+                            speed_kts=800,
+                            radius_nm=10,
+                        ),
+                    ),
+                ),
+            ],
+            fuel_fraction=MIG17_FUEL_FRACTION_DEFAULT,
+            custom_plane=custom_plane,
+        )
 
-    # Max speed tests - level flight to determine Vmax
-    # Target: 593 kt at SL, 618 kt at 10,000 ft
-    add_group(
-        "VMAX_SL",
-        alt_ft=1000,
-        speed_kts=400,
-        waypoints=[
-            WaypointSpec(
-                x=x_origin - 30000,
-                y=y_origin + 30000,
-                alt_ft=1000,
-                speed_kts=400,
-            ),
-            WaypointSpec(
-                x=x_origin - 30000 + 80 * NM_TO_METERS,
-                y=y_origin + 30000,
-                alt_ft=1000,
-                speed_kts=700,
-            ),
-        ],
-    )
+        # Acceleration at 20K
+        add_group(
+            f"{group_prefix}ACCEL_20K",
+            alt_ft=20000,
+            speed_kts=300,
+            waypoints=[
+                WaypointSpec(x=x_origin - 5000 + x_offset, y=y_origin),
+                WaypointSpec(
+                    x=x_origin - 5000 + x_offset,
+                    y=y_origin + 50 * NM_TO_METERS,
+                    speed_kts=800,
+                ),
+                WaypointSpec(
+                    x=x_origin - 5000 + x_offset,
+                    y=y_origin + 60 * NM_TO_METERS,
+                    speed_kts=800,
+                    tasks=(
+                        orbit_task(
+                            race_track=True,
+                            altitude_ft=20000,
+                            speed_kts=800,
+                            radius_nm=10,
+                        ),
+                    ),
+                ),
+            ],
+            fuel_fraction=MIG17_FUEL_FRACTION_DEFAULT,
+            custom_plane=custom_plane,
+        )
 
-    add_group(
-        "VMAX_10K",
-        alt_ft=10000,
-        speed_kts=400,
-        waypoints=[
-            WaypointSpec(
-                x=x_origin - 30000,
-                y=y_origin - 30000,
+        # Climb tests - starting from low altitude, climbing to high altitude
+        # Historical ROC data is at nominal weight (full internal fuel)
+        add_group(
+            f"{group_prefix}CLIMB_SL",
+            alt_ft=1000,
+            speed_kts=380,
+            waypoints=[
+                WaypointSpec(
+                    x=x_origin + 15000 + x_offset,
+                    y=y_origin + 15000,
+                    alt_ft=1000,
+                    speed_kts=380,
+                ),
+                WaypointSpec(
+                    x=x_origin + 15000 + x_offset,
+                    y=y_origin + 15000 + 30 * NM_TO_METERS,
+                    alt_ft=40000,
+                    speed_kts=380,
+                ),
+            ],
+            fuel_fraction=1.0,
+            custom_plane=custom_plane,
+        )
+
+        add_group(
+            f"{group_prefix}CLIMB_10K",
+            alt_ft=10000,
+            speed_kts=380,
+            waypoints=[
+                WaypointSpec(
+                    x=x_origin + 20000 + x_offset,
+                    y=y_origin - 15000,
+                    alt_ft=10000,
+                    speed_kts=380,
+                ),
+                WaypointSpec(
+                    x=x_origin + 20000 + x_offset,
+                    y=y_origin - 15000 + 30 * NM_TO_METERS,
+                    alt_ft=40000,
+                    speed_kts=380,
+                ),
+            ],
+            fuel_fraction=1.0,
+            custom_plane=custom_plane,
+        )
+
+        # Turn tests at different speeds
+        for speed in (300, 350, 400):
+            add_group(
+                f"{group_prefix}TURN_10K_{speed}",
                 alt_ft=10000,
-                speed_kts=400,
-            ),
-            WaypointSpec(
-                x=x_origin - 30000 + 80 * NM_TO_METERS,
-                y=y_origin - 30000,
-                alt_ft=10000,
-                speed_kts=700,
-            ),
-        ],
-    )
+                speed_kts=speed,
+                waypoints=[
+                    WaypointSpec(
+                        x=x_origin - 15000 + x_offset,
+                        y=y_origin - speed * 20,
+                        alt_ft=10000,
+                        speed_kts=speed,
+                    ),
+                    WaypointSpec(
+                        x=x_origin - 15000 + x_offset,
+                        y=y_origin - speed * 20,
+                        alt_ft=10000,
+                        speed_kts=speed,
+                        tasks=(
+                            orbit_task(
+                                race_track=False,
+                                altitude_ft=10000,
+                                speed_kts=speed,
+                                radius_nm=6,
+                            ),
+                        ),
+                    ),
+                ],
+                fuel_fraction=MIG17_FUEL_FRACTION_DEFAULT,
+                custom_plane=custom_plane,
+            )
+
+        # Deceleration test
+        add_group(
+            f"{group_prefix}DECEL_10K",
+            alt_ft=10000,
+            speed_kts=400,
+            waypoints=[
+                WaypointSpec(
+                    x=x_origin + 30000 + x_offset,
+                    y=y_origin,
+                    alt_ft=10000,
+                    speed_kts=400,
+                ),
+                WaypointSpec(
+                    x=x_origin + 30000 + 40 * NM_TO_METERS + x_offset,
+                    y=y_origin,
+                    alt_ft=10000,
+                    speed_kts=200,
+                ),
+            ],
+            fuel_fraction=MIG17_FUEL_FRACTION_DEFAULT,
+            custom_plane=custom_plane,
+        )
+
+        # Max speed tests
+        add_group(
+            f"{group_prefix}VMAX_SL",
+            alt_ft=1000,
+            speed_kts=400,
+            waypoints=[
+                WaypointSpec(
+                    x=x_origin - 30000 + x_offset,
+                    y=y_origin + 30000,
+                    alt_ft=1000,
+                    speed_kts=400,
+                ),
+                WaypointSpec(
+                    x=x_origin - 30000 + 80 * NM_TO_METERS + x_offset,
+                    y=y_origin + 30000,
+                    alt_ft=1000,
+                    speed_kts=700,
+                ),
+            ],
+            fuel_fraction=MIG17_FUEL_FRACTION_DEFAULT,
+            custom_plane=custom_plane,
+        )
+
+        add_group(
+            f"{group_prefix}VMAX_10K",
+            alt_ft=10000,
+            speed_kts=400,
+            waypoints=[
+                WaypointSpec(
+                    x=x_origin - 30000 + x_offset,
+                    y=y_origin - 30000,
+                    alt_ft=10000,
+                    speed_kts=400,
+                ),
+                WaypointSpec(
+                    x=x_origin - 30000 + 80 * NM_TO_METERS + x_offset,
+                    y=y_origin - 30000,
+                    alt_ft=10000,
+                    speed_kts=700,
+                ),
+            ],
+            fuel_fraction=MIG17_FUEL_FRACTION_DEFAULT,
+            custom_plane=custom_plane,
+        )
+
+    # Build groups based on mode
+    if variants:
+        # Multi-FM mode: build groups for each variant
+        LOGGER.info("Multi-FM mode: building groups for %d variants", len(variants))
+        for idx, variant in enumerate(variants):
+            custom_plane = get_or_create_custom_plane(variant.dcs_type_name)
+            prefix = f"{variant.short_name}_"
+            build_test_groups_for_variant(idx, prefix, custom_plane)
+            LOGGER.info(
+                "  Variant %s: %d groups at X offset %d km",
+                variant.short_name,
+                len(BASE_TEST_PATTERNS),
+                idx * VARIANT_X_OFFSET_M // 1000,
+            )
+
+        # Render dynamic Lua logger
+        logger_lua = render_logger_lua(groups)
+    else:
+        # Single-FM mode: original behavior
+        custom_plane = get_or_create_custom_plane(type_name)
+        build_test_groups_for_variant(0, "", custom_plane)
+        logger_lua = LOGGER_LUA_STATIC
 
     # Add mission start trigger with the logging script
-    # Using TriggerStart with DoScript is more reliable than init_script
     trig = triggers.TriggerStart(comment="MiG-17 FM Test Logger")
-    trig.add_action(action.DoScript(action.String(LOGGER_LUA)))
+    trig.add_action(action.DoScript(action.String(logger_lua)))
     miz.triggerrules.triggers.append(trig)
 
     return miz, groups
@@ -701,6 +850,20 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="Path to the MiG-17 mod folder containing Database/mig17f.lua",
     )
+    parser.add_argument(
+        "--variant-root",
+        dest="variant_root",
+        default=Path("./fm_variants/mods"),
+        type=Path,
+        help="Path to FM variants directory containing built mods (default: ./fm_variants/mods)",
+    )
+    parser.add_argument(
+        "--variant-json",
+        dest="variant_json",
+        default=Path("./fm_variants/mig17f_fm_variants.json"),
+        type=Path,
+        help="Path to FM variants JSON file (default: ./fm_variants/mig17f_fm_variants.json)",
+    )
     return parser.parse_args()
 
 
@@ -712,17 +875,29 @@ def main() -> int:
 
     args = parse_args()
 
-    type_name = args.type_name or detect_type_name(args.mod_root)
-    if not type_name:
-        LOGGER.error(
-            "Could not determine MiG-17 type name. Use --type-name to set it explicitly."
-        )
-        return 2
+    # Check for multi-FM variant JSON
+    variant_json = args.variant_json
+    variants: Optional[list[VariantDescriptor]] = None
+
+    if variant_json.exists():
+        LOGGER.info("Found variant JSON: %s", variant_json)
+        variants = load_variant_descriptors(variant_json)
+        LOGGER.info("Loaded %d FM variants for multi-FM mission", len(variants))
+        # In multi-FM mode, type_name from base mod is not used for groups
+        type_name = "multi_fm_mode"
+    else:
+        LOGGER.info("No variant JSON found, using single-FM mode")
+        type_name = args.type_name or detect_type_name(args.mod_root)
+        if not type_name:
+            LOGGER.error(
+                "Could not determine MiG-17 type name. Use --type-name to set it explicitly."
+            )
+            return 2
 
     ensure_parent(args.outfile)
 
     try:
-        miz, groups = build_mission(type_name)
+        miz, groups = build_mission(type_name, variants)
     except Exception as exc:  # pragma: no cover - runtime creation errors
         LOGGER.exception("Failed to build mission: %s", exc)
         return 4
@@ -735,8 +910,13 @@ def main() -> int:
 
     LOGGER.info("MiG-17 FM test mission generated.")
     LOGGER.info("Output : %s", args.outfile)
-    LOGGER.info("Type   : %s", type_name)
-    LOGGER.info("Groups :")
+    if variants:
+        LOGGER.info("Mode   : Multi-FM (%d variants)", len(variants))
+        for v in variants:
+            LOGGER.info("  - %s (%s)", v.short_name, v.dcs_type_name)
+    else:
+        LOGGER.info("Type   : %s", type_name)
+    LOGGER.info("Groups : %d total", len(groups))
     for name in groups:
         LOGGER.info("  - %s", name)
     return 0

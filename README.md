@@ -73,9 +73,16 @@ The MiG-17 excelled in close-range dogfights where its superior maneuverability 
 
 ## Repository layout
 - `[VWV] MiG-17/`: aircraft definition, models, textures, and configuration Lua for the mod itself.
-- `tools/`: Python helpers, including environment bootstrap (`setup_env.py`) and the flight-model test mission generator (`generate_mig17_fm_test_mission.py`).
+- `tools/`: Python helpers for flight model testing and development:
+  - `setup_env.py`: environment bootstrap for dependencies
+  - `generate_mig17_fm_test_mission.py`: FM test mission generator (supports single and multi-FM modes)
+  - `parse_fm_test_log.py`: parses DCS logs and generates pass/fail verification reports
+  - `build_mig17f_variants_from_json.py`: builds multiple FM variant mods from JSON configuration
+- `fm_variants/`: flight model variant configuration for A/B testing different SFM coefficients:
+  - `mig17f_fm_variants.json`: variant definitions with scaling factors (checked in)
+  - `mods/`: generated variant mod folders (gitignored; regenerate with `build_mig17f_variants_from_json.py`)
 - `Tests/`: mission scripts and notes for manual flight-model checks.
-- `codex_ref/`: reference aircraft data and a sample `.miz` used by the tooling tests.
+- `codex_ref/`: reference aircraft data (MiG-15bis, MiG-19P, MiG-21bis Lua files) and a sample `.miz` used by the tooling tests.
 
 ## Installing the aircraft
 1. Copy the `[VWV] MiG-17` directory into your DCS Saved Games Mods folder (e.g., `Saved Games/DCS.openbeta/Mods/aircraft/`).
@@ -95,7 +102,7 @@ pip install -r requirements.txt
 ```
 
 ## Generating the flight-model test mission
-Use the generator to build a reusable mission that exercises acceleration, climb, turn, and deceleration profiles for the mod aircraft.
+Use the generator to build a reusable mission that exercises acceleration, climb, turn, max speed, and deceleration profiles for the mod aircraft.
 
 ```bash
 # Optionally activate the virtual environment first
@@ -115,15 +122,40 @@ python tools/generate_mig17_fm_test_mission.py --type-name vwv_mig17f
 > generator so it behaves consistently across platforms.
 
 Defaults:
-- Output: `build/MiG17F_FM_Test.miz` (directories are created automatically).
+- Output: `~/Saved Games/DCS/Missions/MiG17F_FM_Test.miz` (directories are created automatically).
 - Mod root: `[VWV] MiG-17/` relative to the repo; override with `--mod-root` if the mod lives elsewhere.
 - Aircraft type: read from `Database/mig17f.lua`; override with `--type-name` when needed.
 
-The mission spawns single-ship AI groups named `ACCEL_*`, `CLIMB_*`, `TURN_*`, and `DECEL_*` and injects a Lua logger that reports progress to `dcs.log`.
+The mission spawns single-ship AI groups named `ACCEL_*`, `CLIMB_*`, `TURN_*`, `VMAX_*`, and `DECEL_*` and injects a Lua logger that reports progress to `dcs.log`.
+
+### Multi-FM variant mode
+When a variant JSON file exists at `fm_variants/mig17f_fm_variants.json`, the generator automatically builds a multi-FM mission with test groups for each variant. Group names are prefixed with the variant ID (e.g., `FM6_VMAX_10K`). Build the variant mods first with `build_mig17f_variants_from_json.py`.
+
+## Parsing test results
+After running the test mission in DCS, parse the log to generate a verification report:
+
+```bash
+python tools/parse_fm_test_log.py
+python tools/parse_fm_test_log.py --log-file path/to/dcs.log
+python tools/parse_fm_test_log.py --csv results.csv
+```
+
+The parser compares measured performance against historical MiG-17F targets and reports pass/fail status for each test group. In multi-FM mode, results are grouped by variant.
+
+## Building FM variants
+To build flight model variant mods for A/B testing different SFM coefficient configurations:
+
+```bash
+python tools/build_mig17f_variants_from_json.py
+python tools/build_mig17f_variants_from_json.py --dcs-saved-games "C:/Users/<you>/Saved Games/DCS"
+```
+
+The builder reads `fm_variants/mig17f_fm_variants.json` and generates mod folders in `fm_variants/mods/` with scaled SFM coefficients (Cx0, induced drag polar, engine drag, afterburner thrust). Each variant appears as a distinct aircraft type in DCS. The generated mods are gitignored and can be regenerated from the JSON configuration.
 
 ## Mission scripts and references
-- `Tests/mig17_accel_test.lua` provides a mission-start logger for level-acceleration checks and is described in `Tests/README.md` for recreating the `.miz` used during development.
-- `codex_ref/mig-17f-fm-tests.miz` is a reference mission archive used by the generator tests.
+- `Tests/README.md`: detailed documentation of test groups, targets, fuel loads, and log formats.
+- `Tests/mig17_accel_test.lua`: legacy mission-start logger (the generator now embeds a more comprehensive script).
+- `codex_ref/`: reference data including `mig-17f-fm-tests.miz` and SFM Lua files from comparable aircraft (MiG-15bis, MiG-19P, MiG-21bis).
 
 ## Running tests
 After installing dependencies, run the Python test suite from the repo root:

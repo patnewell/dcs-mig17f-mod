@@ -1,0 +1,92 @@
+{
+  "version": 2,
+  "aircraft": {
+    "id": "vwv_mig17f",
+    "base_mod_dir": "[VWV] MiG-17",
+    "base_display_name": "[VWV] MiG-17F \"Fresco C\"",
+    "description": "Baseline VWV MiG-17F SFM; Stage 2 variants are local perturbations around the tuned FM5 configuration."
+  },
+  "scaling_model": {
+    "cx0": "Multiply all Cx0 values in SFM_Data.aerodynamics.table_data by this factor.",
+    "polar": "Multiply all B2 and B4 values in SFM_Data.aerodynamics.table_data by this factor.",
+    "engine_drag": "Multiply SFM_Data.engine.dcx_eng by this factor.",
+    "pfor": "Multiply all Pfor values in SFM_Data.engine.table_data by this factor."
+  },
+  "variants": [
+    {
+      "variant_id": "FM0_BASE_DRAG0.6_ALL",
+      "short_name": "FM0",
+      "mod_dir_name": "[VWV] MiG-17_FM0_BASE_DRAG0.6_ALL",
+      "dcs_type_name": "vwv_mig17f_fm0b",
+      "shape_username": "mig17f_fm0b",
+      "display_name": "[VWV] MiG-17F FM0 Baseline Drag 0.6x (all)",
+      "scales": {
+        "cx0": 0.6,
+        "polar": 0.6,
+        "engine_drag": 0.6,
+        "pfor": 1.0
+      },
+      "notes": "Baseline tuned candidate based on the first sweep (equivalent to previous FM5_DRAG0.6_ALL). Used as the reference SFM."
+    },
+    {
+      "variant_id": "FM1_POLAR_0.5",
+      "short_name": "FM1",
+      "mod_dir_name": "[VWV] MiG-17_FM1_POLAR0.5",
+      "dcs_type_name": "vwv_mig17f_fm1b",
+      "shape_username": "mig17f_fm1b",
+      "display_name": "[VWV] MiG-17F FM1 Polar 0.5x (Cx0 0.6x)",
+      "scales": {
+        "cx0": 0.6,
+        "polar": 0.5,
+        "engine_drag": 0.6,
+        "pfor": 1.0
+      },
+      "notes": "Same Cx0 and engine drag as baseline, but 0.5x polar drag (B2/B4) to increase climb and sustained turn. Upper bound on lift-related performance."
+    },
+    {
+      "variant_id": "FM2_POLAR_0.7",
+      "short_name": "FM2",
+      "mod_dir_name": "[VWV] MiG-17_FM2_POLAR0.7",
+      "dcs_type_name": "vwv_mig17f_fm2b",
+      "shape_username": "mig17f_fm2b",
+      "display_name": "[VWV] MiG-17F FM2 Polar 0.7x (Cx0 0.6x)",
+      "scales": {
+        "cx0": 0.6,
+        "polar": 0.7,
+        "engine_drag": 0.6,
+        "pfor": 1.0
+      },
+      "notes": "Same Cx0 and engine drag as baseline, but 0.7x polar drag (B2/B4) to slightly reduce climb and sustained turn. Lower bound on lift-related performance."
+    },
+    {
+      "variant_id": "FM3_AB_1.05",
+      "short_name": "FM3",
+      "mod_dir_name": "[VWV] MiG-17_FM3_AB1.05",
+      "dcs_type_name": "vwv_mig17f_fm3b",
+      "shape_username": "mig17f_fm3b",
+      "display_name": "[VWV] MiG-17F FM3 Baseline Drag + AB 1.05x",
+      "scales": {
+        "cx0": 0.6,
+        "polar": 0.6,
+        "engine_drag": 0.6,
+        "pfor": 1.05
+      },
+      "notes": "Baseline drag with afterburner thrust increased by 5%. Used to measure sensitivity of service ceiling and high-altitude climb to AB thrust."
+    },
+    {
+      "variant_id": "FM4_AB_0.95",
+      "short_name": "FM4",
+      "mod_dir_name": "[VWV] MiG-17_FM4_AB0.95",
+      "dcs_type_name": "vwv_mig17f_fm4b",
+      "shape_username": "mig17f_fm4b",
+      "display_name": "[VWV] MiG-17F FM4 Baseline Drag + AB 0.95x",
+      "scales": {
+        "cx0": 0.6,
+        "polar": 0.6,
+        "engine_drag": 0.6,
+        "pfor": 0.95
+      },
+      "notes": "Baseline drag with afterburner thrust reduced by 5%. Lower AB bound for service ceiling and climb sensitivity tests."
+    }
+  ]
+}

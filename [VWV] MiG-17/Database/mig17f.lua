@@ -86,8 +86,8 @@ end
 
 local vwv_mig17f = {
 
-    Name = 'vwv_mig17f', -- AG
-    DisplayName = _('[VWV] MiG-17F "Fresco C"'),
+    Name = 'vwv_mig17f_fm5', -- AG
+    DisplayName = _('[VWV] MiG-17F FM5 Drag 0.6x (all)'),
 
     Picture = "mig17f.png",
     Rate = "50",
@@ -100,7 +100,7 @@ local vwv_mig17f = {
             vis = 3, -- visibility gain.
             desrt = 'mig17f-oblomok', -- Name of destroyed object file name
             fire = {300, 2}, -- Fire on the ground after destoyed: 300sec 2m
-            username = 'mig17f', -- AG
+            username = 'mig17f_fm5', -- AG
             index = WSTYPE_PLACEHOLDER,
             classname = "lLandPlane",
             positioning = "BYNORMAL"
@@ -420,21 +420,21 @@ local vwv_mig17f = {
                         cx_brk  =       0.026, -- coefficient, drag, breaks
                         table_data =
                         {       --  M    Cx0*           Cya*            B2                      B4                      Omxmax Aldop*           Cymax*
-                                { 0.0,  0.0162  ,       0.0715 ,       0.072   ,       0.010   ,       0.460   ,       18.4   ,      1.16},
-                                { 0.1,  0.0162  ,       0.0715 ,       0.072   ,       0.010   ,       0.460   ,       18.4   ,      1.16},
-                                { 0.2,  0.0158  ,       0.0710 ,       0.072   ,       0.011   ,       0.860   ,       18.2   ,      1.15},
-                                { 0.3,  0.0152  ,       0.0718 ,       0.073   ,       0.014   ,       1.200   ,       18.0   ,      1.14},
-                                { 0.4,  0.0149  ,       0.0735 ,       0.075   ,       0.018   ,       1.580   ,       17.5   ,      1.12},
-                                { 0.5,  0.0149  ,       0.0765 ,       0.078   ,       0.022   ,       1.780   ,       17.1   ,      1.10},
-                                { 0.6,  0.0151  ,       0.0810 ,       0.081   ,       0.028   ,       1.620   ,       16.4   ,      1.06},
-                                { 0.7,  0.0156  ,       0.0855 ,       0.086   ,       0.046   ,       1.050   ,       15.6   ,      1.01},
-                                { 0.8,  0.0174  ,       0.0895 ,       0.093   ,       0.078   ,       0.520   ,       14.3   ,      0.96},
-                                { 0.86, 0.0192  ,       0.0860 ,       0.106   ,       0.130   ,       0.380   ,       13.4   ,      0.91},
-                                { 0.9,  0.0255  ,       0.0805 ,       0.124   ,       0.235   ,       0.320   ,       12.2   ,      0.86},
-                                { 0.94, 0.0395  ,       0.0775 ,       0.152   ,       0.360   ,       0.280   ,       11.0   ,      0.80},
-                                { 1.0,  0.0580  ,       0.0765 ,       0.190   ,       0.500   ,       0.230   ,       9.4    ,      0.74},
-                                { 1.04, 0.0610  ,       0.0770 ,       0.225   ,       0.670   ,       0.210   ,       8.7    ,      0.72},
-                                { 1.2,  0.0625  ,       0.0785 ,       0.255   ,       0.890   ,       0.190   ,       8.0    ,      0.68},
+                                { 0.0,  0.0097  ,       0.0715 ,       0.043   ,       0.006   ,       0.460   ,       18.4   ,      1.16},
+                                { 0.1,  0.0097  ,       0.0715 ,       0.043   ,       0.006   ,       0.460   ,       18.4   ,      1.16},
+                                { 0.2,  0.0095  ,       0.0710 ,       0.043   ,       0.007   ,       0.860   ,       18.2   ,      1.15},
+                                { 0.3,  0.0091  ,       0.0718 ,       0.044   ,       0.008   ,       1.200   ,       18.0   ,      1.14},
+                                { 0.4,  0.0089  ,       0.0735 ,       0.045   ,       0.011   ,       1.580   ,       17.5   ,      1.12},
+                                { 0.5,  0.0089  ,       0.0765 ,       0.047   ,       0.013   ,       1.780   ,       17.1   ,      1.10},
+                                { 0.6,  0.0091  ,       0.0810 ,       0.049   ,       0.017   ,       1.620   ,       16.4   ,      1.06},
+                                { 0.7,  0.0094  ,       0.0855 ,       0.052   ,       0.028   ,       1.050   ,       15.6   ,      1.01},
+                                { 0.8,  0.0104  ,       0.0895 ,       0.056   ,       0.047   ,       0.520   ,       14.3   ,      0.96},
+                                { 0.86, 0.0115  ,       0.0860 ,       0.064   ,       0.078   ,       0.380   ,       13.4   ,      0.91},
+                                { 0.9,  0.0153  ,       0.0805 ,       0.074   ,       0.141   ,       0.320   ,       12.2   ,      0.86},
+                                { 0.94, 0.0237  ,       0.0775 ,       0.091   ,       0.216   ,       0.280   ,       11.0   ,      0.80},
+                                { 1.0,  0.0348  ,       0.0765 ,       0.114   ,       0.300   ,       0.230   ,       9.4    ,      0.74},
+                                { 1.04, 0.0366  ,       0.0770 ,       0.135   ,       0.402   ,       0.210   ,       8.7    ,      0.72},
+                                { 1.2,  0.0375  ,       0.0785 ,       0.153   ,       0.534   ,       0.190   ,       8.0    ,      0.68},
                         }, -- end of table_data
                         -- M - Mach number
                         -- Cx0 - Coefficient, drag, profile, of the airplane
@@ -458,7 +458,7 @@ local vwv_mig17f = {
                         ForsRUD =       1, -- Afterburner state of the РУД
                         type    =       "TurboJet",
                         hMaxEng =       19, -- Max altitude for safe engine operation in km
-                        dcx_eng =       0.0134, -- Engine drag coeficient
+                        dcx_eng =       0.0080, -- Engine drag coeficient
                         cemax   =       1.24, -- not used for fuel calulation , only for AI routines to check flight time ( fuel calculation algorithm is built in )
                         cefor   =       2.56, -- not used for fuel calulation , only for AI routines to check flight time ( fuel calculation algorithm is built in )
                         dpdh_m  =       1340, --  altitude coefficient for max thrust

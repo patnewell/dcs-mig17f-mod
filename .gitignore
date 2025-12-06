@@ -42,3 +42,6 @@ fm_variants/mods/
 
 # Test run data (logs, reports)
 test_runs/
+
+# Screenshots to train AI
+tmp_screenshots/

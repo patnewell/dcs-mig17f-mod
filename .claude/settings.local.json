@@ -6,7 +6,14 @@
       "Bash(git commit:*)",
       "WebSearch",
       "Bash(python:*)",
-      "Bash(unzip:*)"
+      "Bash(unzip:*)",
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(cat:*)",
+      "Bash(.venv/Scripts/python.exe -m pytest tools/tests -v --tb=short)",
+      "Bash(.venv/Scripts/pip.exe install:*)",
+      "Bash(.venv/Scripts/python.exe:*)"
     ],
     "deny": [],
     "ask": []

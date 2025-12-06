@@ -91,6 +91,10 @@ class GroupResult:
     vmax_kt: Optional[float] = None
     vmax_alt_ft: Optional[float] = None
     vmax_mach: Optional[float] = None
+    # Ceiling test results
+    ceiling_alt_ft: Optional[float] = None
+    ceiling_roc_fpm: Optional[float] = None
+    ceiling_mach: Optional[float] = None
     # Fuel tracking
     start_fuel_kg: Optional[float] = None
     start_fuel_pct: Optional[float] = None
@@ -103,6 +107,7 @@ def parse_group_name(full_name: str) -> tuple[str, str]:
     """Parse a group name into variant key and test name.
 
     Multi-FM group names have the format: FM<N>_<TEST_NAME>
+    Reference aircraft have format: PREFIX_<TEST_NAME>
     Old single-FM group names have no prefix.
 
     Args:
@@ -114,12 +119,22 @@ def parse_group_name(full_name: str) -> tuple[str, str]:
     Examples:
         "FM6_VMAX_10K" -> ("FM6", "VMAX_10K")
         "FM0_ACCEL_SL" -> ("FM0", "ACCEL_SL")
+        "MIG15_VMAX_SL" -> ("MIG15", "VMAX_SL")
+        "F86_CLIMB_SL" -> ("F86", "CLIMB_SL")
+        "MIG19_ACCEL_10K" -> ("MIG19", "ACCEL_10K")
+        "MIG21_VMAX_10K" -> ("MIG21", "VMAX_10K")
         "VMAX_10K" -> ("FM0", "VMAX_10K")  # backwards compatibility
     """
     # Check for FM<digit> prefix pattern
     match = re.match(r"^(FM\d+)_(.+)$", full_name)
     if match:
         return match.group(1), match.group(2)
+
+    # Check for reference aircraft prefixes
+    ref_match = re.match(r"^(MIG15|F86|MIG19|MIG21)_(.+)$", full_name)
+    if ref_match:
+        return ref_match.group(1), ref_match.group(2)
+
     # No prefix - treat as default variant
     return DEFAULT_VARIANT, full_name
 
@@ -234,6 +249,22 @@ def parse_log_file(log_path: Path) -> dict[str, dict[str, GroupResult]]:
                 flat_results[group_name].vmax_kt = float(parts[2])
                 flat_results[group_name].vmax_alt_ft = float(parts[3])
                 flat_results[group_name].vmax_mach = float(parts[4])
+
+        # Parse CEILING lines: CEILING,<group>,<alt_ft>,<roc_fpm>,<mach>
+        elif data.startswith("CEILING,"):
+            parts = data.split(",")
+            if len(parts) >= 5:
+                group_name = parts[1]
+                if group_name not in flat_results:
+                    variant_key, test_name = parse_group_name(group_name)
+                    flat_results[group_name] = GroupResult(
+                        name=group_name,
+                        variant_key=variant_key,
+                        test_name=test_name,
+                    )
+                flat_results[group_name].ceiling_alt_ft = float(parts[2])
+                flat_results[group_name].ceiling_roc_fpm = float(parts[3])
+                flat_results[group_name].ceiling_mach = float(parts[4])
 
         # Parse SUMMARY lines: SUMMARY,<group>,<max_spd>,<max_alt>,<max_vspd>[,fuel_start=,fuel_end=,fuel_used=]
         elif data.startswith("SUMMARY,"):
@@ -412,6 +443,103 @@ def generate_variant_section(
             lines.extend(format_fuel_info(r))
             lines.append("")
 
+    # ===== NEW TEST PROFILES =====
+
+    # Ceiling test
+    if "CEILING_AB_FULL" in variant_results:
+        r = variant_results["CEILING_AB_FULL"]
+        lines.append("-" * 70)
+        lines.append("CEILING_AB_FULL - Service Ceiling Test (Full Fuel, AB)")
+        lines.append("-" * 70)
+        if r.ceiling_alt_ft:
+            target = TARGETS["ceiling_ft"]
+            measured = r.ceiling_alt_ft
+            passed = check_tolerance(measured, target, TOLERANCE_PCT)
+            status = "PASS" if passed else "FAIL"
+            all_pass = all_pass and passed
+            lines.append(f"  Ceiling Altitude: {measured:,.0f} ft")
+            lines.append(f"  Target:           {target:,} ft")
+            lines.append(f"  Status:           {status}")
+            if r.ceiling_roc_fpm:
+                lines.append(f"  Final ROC:        {r.ceiling_roc_fpm:.0f} fpm")
+            if r.ceiling_mach:
+                lines.append(f"  Mach at Ceiling:  {r.ceiling_mach:.3f}")
+        else:
+            lines.append(f"  Max Altitude: {r.max_alt_ft:,.0f} ft (ceiling not detected)")
+        lines.extend(format_fuel_info(r))
+        if r.alt_gates:
+            lines.append("  Altitude Gates:")
+            for gate in sorted(r.alt_gates, key=lambda g: g.gate_ft):
+                lines.append(
+                    f"    {gate.gate_ft:,.0f} ft at t={gate.elapsed_s:.1f}s "
+                    f"(ROC: {gate.climb_rate_fpm:.0f} fpm)"
+                )
+        lines.append("")
+
+    # Extended climb from 10K
+    if "CLIMB_10K_AB_FULL" in variant_results:
+        r = variant_results["CLIMB_10K_AB_FULL"]
+        lines.append("-" * 70)
+        lines.append("CLIMB_10K_AB_FULL - Extended Climb from 10,000 ft (Full Fuel, AB)")
+        lines.append("-" * 70)
+        lines.append(f"  Max Climb Rate: {r.max_vspd_fpm:.0f} fpm")
+        lines.append(f"  Max Altitude:   {r.max_alt_ft:,.0f} ft")
+        lines.extend(format_fuel_info(r))
+        if r.alt_gates:
+            lines.append("  Altitude Gates:")
+            for gate in sorted(r.alt_gates, key=lambda g: g.gate_ft):
+                lines.append(
+                    f"    {gate.gate_ft:,.0f} ft at t={gate.elapsed_s:.1f}s "
+                    f"(ROC: {gate.climb_rate_fpm:.0f} fpm)"
+                )
+        lines.append("")
+
+    # Fuel state Vmax tests
+    for test_name in ["VMAX_SL_100F", "VMAX_SL_25F"]:
+        if test_name in variant_results:
+            r = variant_results[test_name]
+            fuel_pct = "100%" if "100F" in test_name else "25%"
+            lines.append("-" * 70)
+            lines.append(f"{test_name} - Max Speed at SL ({fuel_pct} Fuel, AB)")
+            lines.append("-" * 70)
+            measured = r.vmax_kt or r.max_spd_kt
+            lines.append(f"  Measured: {measured:.1f} kt")
+            if r.vmax_mach:
+                lines.append(f"  Mach:     {r.vmax_mach:.3f}")
+            lines.extend(format_fuel_info(r))
+            lines.append("")
+
+    # MIL power Vmax
+    if "VMAX_10K_MIL" in variant_results:
+        r = variant_results["VMAX_10K_MIL"]
+        lines.append("-" * 70)
+        lines.append("VMAX_10K_MIL - Max Speed at 10,000 ft (MIL Power, No AB)")
+        lines.append("-" * 70)
+        measured = r.vmax_kt or r.max_spd_kt
+        lines.append(f"  Measured: {measured:.1f} kt")
+        if r.vmax_mach:
+            lines.append(f"  Mach:     {r.vmax_mach:.3f}")
+        lines.extend(format_fuel_info(r))
+        lines.append("")
+
+    # Deceleration tests
+    for test_name in ["DECEL_SL", "DECEL_10K_IDLE"]:
+        if test_name in variant_results:
+            r = variant_results[test_name]
+            alt_desc = "SL" if "SL" in test_name else "10,000 ft"
+            lines.append("-" * 70)
+            lines.append(f"{test_name} - Deceleration at {alt_desc}")
+            lines.append("-" * 70)
+            lines.append(f"  Max Speed: {r.max_spd_kt:.1f} kt")
+            lines.extend(format_fuel_info(r))
+            if r.speed_gates:
+                lines.append("  Speed Gates:")
+                for gate in sorted(r.speed_gates, key=lambda g: -g.gate_kt):
+                    lines.append(
+                        f"    {gate.gate_kt:.0f} kt at t={gate.elapsed_s:.1f}s"
+                    )
+            lines.append("")
+
     return lines, all_pass
 
 
@@ -480,6 +608,9 @@ def write_csv(
         "max_vspd_fpm",
         "vmax_kt",
         "vmax_mach",
+        "ceiling_alt_ft",
+        "ceiling_roc_fpm",
+        "ceiling_mach",
         "start_fuel_kg",
         "end_fuel_kg",
         "fuel_used_kg",
@@ -499,6 +630,9 @@ def write_csv(
                 "max_vspd_fpm": f"{r.max_vspd_fpm:.0f}" if r.max_vspd_fpm else "",
                 "vmax_kt": f"{r.vmax_kt:.1f}" if r.vmax_kt else "",
                 "vmax_mach": f"{r.vmax_mach:.3f}" if r.vmax_mach else "",
+                "ceiling_alt_ft": f"{r.ceiling_alt_ft:.0f}" if r.ceiling_alt_ft else "",
+                "ceiling_roc_fpm": f"{r.ceiling_roc_fpm:.0f}" if r.ceiling_roc_fpm else "",
+                "ceiling_mach": f"{r.ceiling_mach:.3f}" if r.ceiling_mach else "",
                 "start_fuel_kg": f"{r.start_fuel_kg:.0f}" if r.start_fuel_kg else "",
                 "end_fuel_kg": f"{r.end_fuel_kg:.0f}" if r.end_fuel_kg else "",
                 "fuel_used_kg": f"{r.fuel_used_kg:.0f}" if r.fuel_used_kg else "",

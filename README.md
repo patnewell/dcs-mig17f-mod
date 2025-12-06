@@ -74,16 +74,18 @@ The MiG-17 excelled in close-range dogfights where its superior maneuverability 
 ## Repository layout
 - `[VWV] MiG-17/`: aircraft definition, models, textures, and configuration Lua for the mod itself.
 - `tools/`: Python helpers for flight model testing and development:
+  - `mig17_fm_tool.py`: **unified CLI tool** with subcommands for all FM development tasks
   - `setup_env.py`: environment bootstrap for dependencies
-  - `run_fm_test.py`: **orchestrates a complete test run** (build, install, launch, wait, analyze)
-  - `generate_mig17_fm_test_mission.py`: FM test mission generator (supports single and multi-FM modes)
-  - `parse_fm_test_log.py`: parses DCS logs and generates pass/fail verification reports
-  - `build_mig17f_variants_from_json.py`: builds multiple FM variant mods from JSON configuration
+  - `generate_mig17_fm_test_mission.py`: FM test mission generator module
+  - `parse_fm_test_log.py`: log parsing module
+  - `build_mig17f_variants_from_json.py`: variant building module
+  - `run_fm_test.py`: test orchestration module
+  - `tests/`: comprehensive unit tests for all modules
 - `fm_variants/`: flight model variant configuration for A/B testing different SFM coefficients:
   - `mig17f_fm_variants.json`: variant definitions with scaling factors (checked in)
-  - `mods/`: generated variant mod folders (gitignored; regenerate with `build_mig17f_variants_from_json.py`)
+  - `mods/`: generated variant mod folders (gitignored; regenerate with build-variants command)
 - `Tests/`: mission scripts and notes for manual flight-model checks.
-- `test_runs/`: archived test run data (gitignored; created by `run_fm_test.py`)
+- `test_runs/`: archived test run data (gitignored; created by run-test command)
 - `codex_ref/`: reference aircraft data (MiG-15bis, MiG-19P, MiG-21bis Lua files) and a sample `.miz` used by the tooling tests.
 
 ## Installing the aircraft
@@ -103,69 +105,88 @@ The helper creates a `.venv` in the repo root by default (override with `--venv-
 pip install -r requirements.txt
 ```
 
-## Generating the flight-model test mission
-Use the generator to build a reusable mission that exercises acceleration, climb, turn, max speed, and deceleration profiles for the mod aircraft.
+## Unified CLI Tool
+
+All flight model development tasks are available through a single CLI tool with subcommands:
 
 ```bash
-# Optionally activate the virtual environment first
-source .venv/bin/activate
-
-python tools/generate_mig17_fm_test_mission.py
-python tools/generate_mig17_fm_test_mission.py --outfile "C:/Users/<you>/Saved Games/DCS.openbeta/Missions/MiG17F_FM_Test.miz"
-python tools/generate_mig17_fm_test_mission.py --type-name vwv_mig17f
+python -m tools.mig17_fm_tool <command> [options]
 ```
 
-> **Windows note:** In the CI/Codex Linux environment the generator runs without a
-> local DCS installation, so PyDCS never finds any livery folders to scan and
-> imports cleanly. On Windows, PyDCS will attempt to scan the default DCS
-> install and Saved Games paths during import, which can trigger a `KeyError`
-> if the expected `country_list` variable is missing in certain livery scripts.
-> The repository includes a stub to short-circuit that scan when running the
-> generator so it behaves consistently across platforms.
+### Available Commands
 
-Defaults:
-- Output: `~/Saved Games/DCS/Missions/MiG17F_FM_Test.miz` (directories are created automatically).
-- Mod root: `[VWV] MiG-17/` relative to the repo; override with `--mod-root` if the mod lives elsewhere.
-- Aircraft type: read from `Database/mig17f.lua`; override with `--type-name` when needed.
+| Command | Description |
+|---------|-------------|
+| `generate-mission` | Generate FM test mission (.miz file) |
+| `parse-log` | Parse DCS log for test results |
+| `build-variants` | Build FM variant mods from JSON configuration |
+| `run-test` | Run complete FM test workflow (build, install, test, analyze) |
+
+Use `python -m tools.mig17_fm_tool <command> --help` for detailed options.
+
+### Generating the flight-model test mission
+
+```bash
+# Generate to default location (Saved Games/DCS/Missions/)
+python -m tools.mig17_fm_tool generate-mission
+
+# Custom output path
+python -m tools.mig17_fm_tool generate-mission --outfile "C:/Users/<you>/Saved Games/DCS/Missions/MiG17F_FM_Test.miz"
+
+# Override aircraft type name
+python -m tools.mig17_fm_tool generate-mission --type-name vwv_mig17f
+```
 
 The mission spawns single-ship AI groups named `ACCEL_*`, `CLIMB_*`, `TURN_*`, `VMAX_*`, and `DECEL_*` and injects a Lua logger that reports progress to `dcs.log`.
 
-### Multi-FM variant mode
-When a variant JSON file exists at `fm_variants/mig17f_fm_variants.json`, the generator automatically builds a multi-FM mission with test groups for each variant. Group names are prefixed with the variant ID (e.g., `FM6_VMAX_10K`). Build the variant mods first with `build_mig17f_variants_from_json.py`.
+**Multi-FM variant mode:** When `fm_variants/mig17f_fm_variants.json` exists, the generator automatically builds a multi-FM mission with test groups for each variant. Group names are prefixed with the variant ID (e.g., `FM6_VMAX_10K`).
 
-## Parsing test results
-After running the test mission in DCS, parse the log to generate a verification report:
+> **Windows note:** PyDCS may trigger a `KeyError` when scanning livery folders on Windows. The repository includes a stub to prevent this.
+
+### Parsing test results
 
 ```bash
-python tools/parse_fm_test_log.py
-python tools/parse_fm_test_log.py --log-file path/to/dcs.log
-python tools/parse_fm_test_log.py --csv results.csv
+# Auto-detect DCS log location
+python -m tools.mig17_fm_tool parse-log
+
+# Specify log file and output
+python -m tools.mig17_fm_tool parse-log --log-file path/to/dcs.log --output report.txt
+
+# Export to CSV
+python -m tools.mig17_fm_tool parse-log --csv results.csv
 ```
 
 The parser compares measured performance against historical MiG-17F targets and reports pass/fail status for each test group. In multi-FM mode, results are grouped by variant.
 
-## Building FM variants
-To build flight model variant mods for A/B testing different SFM coefficient configurations:
+### Building FM variants
 
 ```bash
-python tools/build_mig17f_variants_from_json.py
-python tools/build_mig17f_variants_from_json.py --dcs-saved-games "C:/Users/<you>/Saved Games/DCS"
+# Build variants to default location (fm_variants/mods/)
+python -m tools.mig17_fm_tool build-variants
+
+# Build and install to DCS
+python -m tools.mig17_fm_tool build-variants --dcs-saved-games "C:/Users/<you>/Saved Games/DCS"
 ```
 
-The builder reads `fm_variants/mig17f_fm_variants.json` and generates mod folders in `fm_variants/mods/` with scaled SFM coefficients (Cx0, induced drag polar, engine drag, afterburner thrust). Each variant appears as a distinct aircraft type in DCS. The generated mods are gitignored and can be regenerated from the JSON configuration.
+The builder reads `fm_variants/mig17f_fm_variants.json` and generates mod folders with scaled SFM coefficients (Cx0, induced drag polar, engine drag, afterburner thrust). Each variant appears as a distinct aircraft type in DCS.
 
-## Running a complete flight test
-
-The `run_fm_test.py` script orchestrates the entire test workflow:
+### Running a complete flight test
 
 ```bash
-python tools/run_fm_test.py
-python tools/run_fm_test.py --timeout 900  # 15 minute timeout
-python tools/run_fm_test.py --skip-build   # reuse existing mods
-python tools/run_fm_test.py --analyze-only path/to/dcs.log  # analyze existing log
+# Full automated test workflow
+python -m tools.mig17_fm_tool run-test
+
+# Custom timeout (default: 15 minutes)
+python -m tools.mig17_fm_tool run-test --timeout 900
+
+# Reuse existing mods
+python -m tools.mig17_fm_tool run-test --skip-build
+
+# Analyze existing log only
+python -m tools.mig17_fm_tool run-test --analyze-only path/to/dcs.log
 ```
 
-The script performs these steps automatically:
+The run-test command performs these steps automatically:
 1. Builds all FM variant mods from JSON configuration
 2. Installs mods to DCS (removes duplicates first)
 3. Generates the test mission with a unique run ID
@@ -180,6 +201,17 @@ Test results are saved to `test_runs/` (gitignored) with:
 - `fm_test_results.csv`: data for further analysis
 - `run_info.txt`: metadata about the run
 
+### Legacy Script Usage
+
+The individual scripts are still available for backward compatibility:
+
+```bash
+python tools/generate_mig17_fm_test_mission.py [options]
+python tools/parse_fm_test_log.py [options]
+python tools/build_mig17f_variants_from_json.py [options]
+python tools/run_fm_test.py [options]
+```
+
 ## Mission scripts and references
 - `Tests/README.md`: detailed documentation of test groups, targets, fuel loads, and log formats.
 - `Tests/mig17_accel_test.lua`: legacy mission-start logger (the generator now embeds a more comprehensive script).
@@ -189,5 +221,19 @@ Test results are saved to `test_runs/` (gitignored) with:
 After installing dependencies, run the Python test suite from the repo root:
 
 ```bash
+# Install pytest if not already installed
+pip install pytest
+
+# Run all tests
 python -m pytest tools/tests
+
+# Run with verbose output
+python -m pytest tools/tests -v
 ```
+
+The test suite includes comprehensive unit tests for all modules:
+- `test_generate_mig17_fm_test_mission.py`: mission generator tests
+- `test_parse_fm_test_log.py`: log parser tests
+- `test_build_mig17f_variants_from_json.py`: variant builder tests
+- `test_run_fm_test.py`: test orchestration tests
+- `test_mig17_fm_tool.py`: unified CLI tool tests

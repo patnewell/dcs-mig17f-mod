@@ -53,8 +53,9 @@ do
   -- 593 kt = Vmax at SL, 618 kt = Vmax at 10K with afterburner
   MIG17_TEST.SPEED_GATES_KT = { 350, 400, 450, 500, 550, 593, 618 }
 
-  -- Altitude gates for climb tests (feet)
-  MIG17_TEST.ALT_GATES_FT = { 5000, 10000, 15000, 20000, 25000, 30000, 35000, 40000 }
+  -- Altitude gates for climb and ceiling tests (feet)
+  -- Extended to 55000 ft for service ceiling testing
+  MIG17_TEST.ALT_GATES_FT = { 5000, 10000, 15000, 20000, 25000, 30000, 35000, 40000, 45000, 50000, 54500 }
 
   -- Historical targets for verification
   MIG17_TEST.TARGETS = {
@@ -104,6 +105,7 @@ do
         maxAlt = 0,
         maxVspd = 0,
         vmaxReported = false,
+        ceilingReported = false,
         stableCount = 0,
         initialFuel = nil,
         lastFuel = nil,
@@ -179,11 +181,19 @@ do
       end
     end
 
-    if name:find("CLIMB") then
+    -- Track altitude gates for CLIMB and CEILING tests
+    if name:find("CLIMB") or name:find("CEILING") then
       for i, gateFt in ipairs(MIG17_TEST.ALT_GATES_FT) do
         if not st.altGates[i] and alt_ft >= gateFt then
           st.altGates[i] = elapsed
           log(string.format("ALT_GATE,%s,%.0f,%.1f,%.0f", name, gateFt, elapsed, vspd_fpm))
+        end
+      end
+      -- Report ceiling when ROC drops below 1000 fpm (service ceiling criterion)
+      if name:find("CEILING") and not st.ceilingReported and elapsed > 60 then
+        if vspd_fpm < 1000 and vspd_fpm > 0 then
+          st.ceilingReported = true
+          log(string.format("CEILING,%s,%.0f,%.0f,%.3f", name, alt_ft, vspd_fpm, mach))
         end
       end
     end
@@ -245,16 +255,6 @@ do
   timer.scheduleFunction(reportSummary, {}, timer.getTime() + 600)
 end
 '''
-
-# Default groups for single-FM mode
-SINGLE_FM_GROUPS = [
-    "ACCEL_SL", "ACCEL_10K", "ACCEL_20K",
-    "CLIMB_SL", "CLIMB_10K",
-    "TURN_10K_300", "TURN_10K_350", "TURN_10K_400",
-    "VMAX_SL", "VMAX_10K",
-    "DECEL_10K",
-]
-
 
 LOGGER = logging.getLogger(__name__)
 
@@ -422,17 +422,37 @@ def render_logger_lua(group_names: list[str], run_id: str) -> str:
 
 # Base test patterns used by both single-FM and multi-FM modes
 BASE_TEST_PATTERNS = [
+    # Acceleration tests
     "ACCEL_SL",
     "ACCEL_10K",
     "ACCEL_20K",
+    # Climb tests
     "CLIMB_SL",
     "CLIMB_10K",
+    "CLIMB_10K_AB_FULL",  # Extended climb from 10K
+    "CEILING_AB_FULL",  # Service ceiling test from 20K
+    # Turn tests
     "TURN_10K_300",
     "TURN_10K_350",
     "TURN_10K_400",
-    "VMAX_SL",
-    "VMAX_10K",
-    "DECEL_10K",
+    # Vmax tests (existing + fuel state variants)
+    "VMAX_SL",  # Legacy name, 50% fuel
+    "VMAX_10K",  # Legacy name, 50% fuel
+    "VMAX_SL_100F",  # 100% fuel
+    "VMAX_SL_25F",  # 25% fuel
+    "VMAX_10K_MIL",  # MIL power only (no AB)
+    # Deceleration tests
+    "DECEL_10K",  # Legacy
+    "DECEL_SL",  # New SL decel
+    "DECEL_10K_IDLE",  # Idle throttle decel
+]
+
+# Reference aircraft for comparison (DCS AI modules)
+REFERENCE_AIRCRAFT = [
+    {"type_name": "MiG-15bis", "display_name": "MiG-15bis", "prefix": "MIG15_"},
+    {"type_name": "F-86F Sabre", "display_name": "F-86F Sabre", "prefix": "F86_"},
+    {"type_name": "MiG-19P", "display_name": "MiG-19P", "prefix": "MIG19_"},
+    {"type_name": "MiG-21Bis", "display_name": "MiG-21bis", "prefix": "MIG21_"},
 ]
 
 
@@ -819,6 +839,170 @@ def build_mission(
             custom_plane=custom_plane,
         )
 
+        # ===== NEW TEST PROFILES (Section 2) =====
+
+        # Ceiling test - climb from 20K to service ceiling
+        add_group(
+            f"{group_prefix}CEILING_AB_FULL",
+            alt_ft=20000,
+            speed_kts=380,
+            waypoints=[
+                WaypointSpec(
+                    x=x_origin + 25000 + x_offset,
+                    y=y_origin + 20000,
+                    alt_ft=20000,
+                    speed_kts=380,
+                ),
+                WaypointSpec(
+                    x=x_origin + 25000 + x_offset,
+                    y=y_origin + 20000 + 40 * NM_TO_METERS,
+                    alt_ft=55000,  # Target service ceiling
+                    speed_kts=380,
+                ),
+            ],
+            fuel_fraction=1.0,
+            custom_plane=custom_plane,
+        )
+
+        # Extended climb from 10K (CLIMB_10K_AB_FULL)
+        add_group(
+            f"{group_prefix}CLIMB_10K_AB_FULL",
+            alt_ft=10000,
+            speed_kts=380,
+            waypoints=[
+                WaypointSpec(
+                    x=x_origin + 22000 + x_offset,
+                    y=y_origin - 20000,
+                    alt_ft=10000,
+                    speed_kts=380,
+                ),
+                WaypointSpec(
+                    x=x_origin + 22000 + x_offset,
+                    y=y_origin - 20000 + 35 * NM_TO_METERS,
+                    alt_ft=45000,
+                    speed_kts=380,
+                ),
+            ],
+            fuel_fraction=1.0,
+            custom_plane=custom_plane,
+        )
+
+        # Vmax fuel state tests at SL
+        # VMAX_SL_100F - 100% fuel
+        add_group(
+            f"{group_prefix}VMAX_SL_100F",
+            alt_ft=1000,
+            speed_kts=400,
+            waypoints=[
+                WaypointSpec(
+                    x=x_origin - 32000 + x_offset,
+                    y=y_origin + 35000,
+                    alt_ft=1000,
+                    speed_kts=400,
+                ),
+                WaypointSpec(
+                    x=x_origin - 32000 + 80 * NM_TO_METERS + x_offset,
+                    y=y_origin + 35000,
+                    alt_ft=1000,
+                    speed_kts=700,
+                ),
+            ],
+            fuel_fraction=1.0,
+            custom_plane=custom_plane,
+        )
+
+        # VMAX_SL_25F - 25% fuel
+        add_group(
+            f"{group_prefix}VMAX_SL_25F",
+            alt_ft=1000,
+            speed_kts=400,
+            waypoints=[
+                WaypointSpec(
+                    x=x_origin - 34000 + x_offset,
+                    y=y_origin + 25000,
+                    alt_ft=1000,
+                    speed_kts=400,
+                ),
+                WaypointSpec(
+                    x=x_origin - 34000 + 80 * NM_TO_METERS + x_offset,
+                    y=y_origin + 25000,
+                    alt_ft=1000,
+                    speed_kts=700,
+                ),
+            ],
+            fuel_fraction=0.25,
+            custom_plane=custom_plane,
+        )
+
+        # VMAX_10K_MIL - MIL power only (lower target speed since no AB)
+        add_group(
+            f"{group_prefix}VMAX_10K_MIL",
+            alt_ft=10000,
+            speed_kts=350,
+            waypoints=[
+                WaypointSpec(
+                    x=x_origin - 32000 + x_offset,
+                    y=y_origin - 35000,
+                    alt_ft=10000,
+                    speed_kts=350,
+                ),
+                WaypointSpec(
+                    x=x_origin - 32000 + 80 * NM_TO_METERS + x_offset,
+                    y=y_origin - 35000,
+                    alt_ft=10000,
+                    speed_kts=550,  # Lower target for MIL power
+                ),
+            ],
+            fuel_fraction=MIG17_FUEL_FRACTION_DEFAULT,
+            custom_plane=custom_plane,
+        )
+
+        # Deceleration at SL
+        add_group(
+            f"{group_prefix}DECEL_SL",
+            alt_ft=1000,
+            speed_kts=450,
+            waypoints=[
+                WaypointSpec(
+                    x=x_origin + 32000 + x_offset,
+                    y=y_origin + 5000,
+                    alt_ft=1000,
+                    speed_kts=450,
+                ),
+                WaypointSpec(
+                    x=x_origin + 32000 + 40 * NM_TO_METERS + x_offset,
+                    y=y_origin + 5000,
+                    alt_ft=1000,
+                    speed_kts=200,
+                ),
+            ],
+            fuel_fraction=MIG17_FUEL_FRACTION_DEFAULT,
+            custom_plane=custom_plane,
+        )
+
+        # Deceleration at 10K with idle throttle (same profile, AI will naturally decel)
+        add_group(
+            f"{group_prefix}DECEL_10K_IDLE",
+            alt_ft=10000,
+            speed_kts=450,
+            waypoints=[
+                WaypointSpec(
+                    x=x_origin + 34000 + x_offset,
+                    y=y_origin - 5000,
+                    alt_ft=10000,
+                    speed_kts=450,
+                ),
+                WaypointSpec(
+                    x=x_origin + 34000 + 50 * NM_TO_METERS + x_offset,
+                    y=y_origin - 5000,
+                    alt_ft=10000,
+                    speed_kts=200,
+                ),
+            ],
+            fuel_fraction=MIG17_FUEL_FRACTION_DEFAULT,
+            custom_plane=custom_plane,
+        )
+
     # Build groups based on mode
     if variants:
         # Multi-FM mode: build groups for each variant
@@ -834,13 +1018,27 @@ def build_mission(
                 idx * VARIANT_X_OFFSET_M // 1000,
             )
 
+        # Add reference aircraft (DCS AI modules for comparison)
+        # Place them at negative X offsets (before the FM variants)
+        LOGGER.info("Adding %d reference aircraft types", len(REFERENCE_AIRCRAFT))
+        for ref_idx, ref_ac in enumerate(REFERENCE_AIRCRAFT):
+            ref_plane = get_or_create_custom_plane(ref_ac["type_name"])
+            # Use negative indices to place reference aircraft before variants
+            ref_offset_idx = -(ref_idx + 1)
+            build_test_groups_for_variant(ref_offset_idx, ref_ac["prefix"], ref_plane)
+            LOGGER.info(
+                "  Reference %s: groups at X offset %d km",
+                ref_ac["display_name"],
+                ref_offset_idx * VARIANT_X_OFFSET_M // 1000,
+            )
+
         # Render dynamic Lua logger
         logger_lua = render_logger_lua(groups, run_id)
     else:
         # Single-FM mode: original behavior
         custom_plane = get_or_create_custom_plane(type_name)
         build_test_groups_for_variant(0, "", custom_plane)
-        groups = SINGLE_FM_GROUPS.copy()
+        # groups is already populated by build_test_groups_for_variant via add_group()
         logger_lua = render_logger_lua(groups, run_id)
 
     # Add mission start trigger with the logging script

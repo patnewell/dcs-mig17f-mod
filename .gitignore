@@ -44,4 +44,4 @@ fm_variants/mods/
 test_runs/
 
 # Screenshots to train AI
-tmp_screenshots/
+ai_scratch_area/

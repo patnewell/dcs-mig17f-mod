@@ -9,10 +9,13 @@ Usage:
     python tools/mig17_fm_tool.py <command> [options]
 
 Commands:
-    generate-mission  Generate FM test mission (.miz file)
-    parse-log         Parse DCS log for test results
-    build-variants    Build FM variant mods from JSON configuration
-    run-test          Run complete FM test workflow (build, install, test, analyze)
+    generate-mission      Generate FM test mission (.miz file)
+    parse-log             Parse DCS log for test results
+    build-variants        Build FM variant mods from JSON configuration
+    run-test              Run complete FM test workflow (build, install, test, analyze)
+    generate-bfm-mission  Generate BFM (dogfight) test mission
+    analyze-bfm           Analyze TacView ACMI file for BFM metrics
+    run-bfm-test          Run complete BFM test workflow
 
 Examples:
     # Generate a test mission
@@ -26,6 +29,15 @@ Examples:
 
     # Run complete test workflow
     python tools/mig17_fm_tool.py run-test --timeout 900
+
+    # Generate BFM test mission
+    python tools/mig17_fm_tool.py generate-bfm-mission --max-priority 2
+
+    # Analyze BFM test from ACMI file
+    python tools/mig17_fm_tool.py analyze-bfm latest --csv results.csv
+
+    # Run complete BFM test
+    python tools/mig17_fm_tool.py run-bfm-test --max-priority 2
 """
 from __future__ import annotations
 
@@ -41,6 +53,9 @@ from tools import (
     generate_mig17_fm_test_mission as generator,
     parse_fm_test_log as parser,
     run_fm_test as runner,
+    generate_bfm_test_mission as bfm_generator,
+    bfm_acmi_analyzer as bfm_analyzer,
+    run_bfm_test as bfm_runner,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -291,6 +306,203 @@ def cmd_run_test(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_generate_bfm_mission(args: argparse.Namespace) -> int:
+    """Handle the generate-bfm-mission subcommand."""
+    # Load BFM configuration
+    if not args.bfm_config.exists():
+        LOGGER.error("BFM config not found: %s", args.bfm_config)
+        return 1
+
+    LOGGER.info("Loading BFM configuration from: %s", args.bfm_config)
+    bfm_config = bfm_generator.load_bfm_config(args.bfm_config)
+    LOGGER.info("Loaded %d scenarios", len(bfm_config.scenarios))
+
+    # Check for multi-FM mode
+    variants = None
+    if args.variant_json.exists():
+        LOGGER.info("Found variant JSON: %s", args.variant_json)
+        variants = bfm_generator.load_variant_descriptors(args.variant_json)
+        LOGGER.info("Multi-FM mode: %d variants", len(variants))
+        mig17_type = "multi_fm_mode"
+    else:
+        LOGGER.info("Single-FM mode: %s", args.type_name)
+        mig17_type = args.type_name
+
+    # Build mission
+    try:
+        miz, groups, run_id = bfm_generator.build_bfm_mission(
+            bfm_config,
+            mig17_type,
+            variants,
+            max_priority=args.max_priority,
+        )
+    except Exception as exc:
+        LOGGER.exception("Failed to build mission: %s", exc)
+        return 2
+
+    # Ensure output directory exists
+    args.outfile.parent.mkdir(parents=True, exist_ok=True)
+
+    # Save mission
+    try:
+        miz.save(args.outfile)
+    except Exception as exc:
+        LOGGER.exception("Failed to save mission: %s", exc)
+        return 3
+
+    LOGGER.info("BFM test mission generated successfully")
+    LOGGER.info("Output : %s", args.outfile)
+    LOGGER.info("Run ID : %s", run_id)
+    LOGGER.info("Groups : %d", len(groups))
+
+    print(f"RUN_ID={run_id}")
+    return 0
+
+
+def cmd_analyze_bfm(args: argparse.Namespace) -> int:
+    """Handle the analyze-bfm subcommand."""
+    acmi_path = args.acmi_path
+
+    # Handle 'latest' keyword
+    if str(acmi_path).lower() == "latest":
+        tacview_dir = bfm_runner.get_tacview_dir()
+        acmi_path = bfm_runner.find_latest_acmi(tacview_dir)
+        if not acmi_path:
+            LOGGER.error("No ACMI files found in %s", tacview_dir)
+            return 1
+        LOGGER.info("Using latest ACMI: %s", acmi_path)
+    elif not acmi_path.exists():
+        LOGGER.error("ACMI file not found: %s", acmi_path)
+        return 1
+
+    results = bfm_analyzer.analyze_acmi_file(acmi_path, args.bfm_config)
+
+    if not results:
+        LOGGER.warning("No BFM engagement data found in ACMI file")
+        return 2
+
+    report = bfm_analyzer.generate_report(results)
+
+    if args.output:
+        args.output.write_text(report, encoding="utf-8")
+        LOGGER.info("Report written to: %s", args.output)
+    else:
+        print(report)
+
+    if args.csv:
+        bfm_analyzer.write_csv(results, args.csv)
+        LOGGER.info("CSV written to: %s", args.csv)
+
+    return 0
+
+
+def cmd_run_bfm_test(args: argparse.Namespace) -> int:
+    """Handle the run-bfm-test subcommand."""
+    repo_root = bfm_runner.find_repo_root()
+    LOGGER.info("Repository root: %s", repo_root)
+
+    # Handle analyze-only mode
+    if args.analyze_only:
+        from datetime import datetime
+        import shutil
+
+        if args.analyze_only.lower() == "latest":
+            tacview_dir = bfm_runner.get_tacview_dir()
+            acmi_path = bfm_runner.find_latest_acmi(tacview_dir)
+            if not acmi_path:
+                LOGGER.error("No ACMI files found in %s", tacview_dir)
+                return 1
+            LOGGER.info("Using latest ACMI: %s", acmi_path)
+        else:
+            acmi_path = Path(args.analyze_only)
+            if not acmi_path.exists():
+                LOGGER.error("ACMI file not found: %s", acmi_path)
+                return 1
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        run_dir = repo_root / "test_runs" / f"{timestamp}_bfm_analysis"
+        run_dir.mkdir(parents=True, exist_ok=True)
+
+        dest_acmi = run_dir / acmi_path.name
+        shutil.copy2(acmi_path, dest_acmi)
+
+        if not bfm_runner.run_analysis(repo_root, dest_acmi, run_dir):
+            return 1
+        return 0
+
+    # Detect DCS paths
+    try:
+        dcs_paths = bfm_runner.DCSPaths.detect(args.dcs_path, args.saved_games)
+    except FileNotFoundError as e:
+        LOGGER.error(str(e))
+        return 1
+
+    LOGGER.info("DCS installation: %s", dcs_paths.install_dir)
+    LOGGER.info("DCS Saved Games: %s", dcs_paths.saved_games)
+
+    # Step 1: Build FM variants
+    if not args.skip_build:
+        if not bfm_runner.run_build_variants(repo_root, dcs_paths):
+            return 1
+
+    # Step 2: Install base mod
+    if not bfm_runner.install_base_mod(repo_root, dcs_paths):
+        return 1
+
+    # Step 3: Generate mission
+    run_id = bfm_runner.generate_bfm_mission(repo_root, dcs_paths, args.max_priority)
+    if not run_id:
+        return 1
+
+    # Step 4: Launch DCS
+    if not args.skip_launch:
+        if not bfm_runner.launch_dcs(dcs_paths):
+            return 1
+
+    # Instructions
+    LOGGER.info("")
+    LOGGER.info("*" * 60)
+    LOGGER.info("ACTION REQUIRED:")
+    LOGGER.info("  1. In DCS, go to Mission Editor")
+    LOGGER.info("  2. Load: %s", dcs_paths.missions_dir / "MiG17F_BFM_Test.miz")
+    LOGGER.info("  3. Click 'Fly' to start the mission")
+    LOGGER.info("  4. Wait for BFM scenarios to complete (~10 minutes)")
+    LOGGER.info("*" * 60)
+    LOGGER.info("")
+
+    from datetime import datetime
+    mission_start_time = datetime.now()
+
+    # Step 5: Wait for test completion
+    if not bfm_runner.wait_for_test_completion(dcs_paths, run_id, args.timeout):
+        LOGGER.warning("Test completion markers not found, proceeding anyway...")
+
+    # Step 6: Wait for ACMI file
+    acmi_path = bfm_runner.wait_for_acmi_file(mission_start_time)
+    if not acmi_path:
+        LOGGER.error("No ACMI file found")
+        return 1
+
+    # Copy and analyze
+    run_dir = repo_root / "test_runs" / f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{run_id}_bfm"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    dest_acmi = bfm_runner.copy_acmi_to_test_runs(acmi_path, repo_root, run_id)
+    run_dir = dest_acmi.parent
+
+    # Step 7: Analyze
+    if not bfm_runner.run_analysis(repo_root, dest_acmi, run_dir):
+        return 1
+
+    LOGGER.info("")
+    LOGGER.info("=" * 60)
+    LOGGER.info("BFM TEST RUN COMPLETE")
+    LOGGER.info("=" * 60)
+    LOGGER.info("Run ID: %s", run_id)
+    LOGGER.info("Results: %s", run_dir)
+
+    return 0
+
+
 def add_generate_mission_parser(subparsers: argparse._SubParsersAction) -> None:
     """Add the generate-mission subcommand parser."""
     parser_gen = subparsers.add_parser(
@@ -435,6 +647,135 @@ def add_run_test_parser(subparsers: argparse._SubParsersAction) -> None:
     parser_run.set_defaults(func=cmd_run_test)
 
 
+def add_generate_bfm_mission_parser(subparsers: argparse._SubParsersAction) -> None:
+    """Add the generate-bfm-mission subcommand parser."""
+    parser_bfm = subparsers.add_parser(
+        "generate-bfm-mission",
+        help="Generate BFM (dogfight) test mission",
+        description="Generate a mission with BFM engagement scenarios to test "
+        "the MiG-17F at the edge of its performance envelope.",
+    )
+    parser_bfm.add_argument(
+        "--outfile",
+        default=Path.home() / "Saved Games" / "DCS" / "Missions" / "MiG17F_BFM_Test.miz",
+        type=Path,
+        help="Path to output .miz file",
+    )
+    parser_bfm.add_argument(
+        "--bfm-config",
+        dest="bfm_config",
+        default=Path.cwd() / "bfm_mission_tests.json",
+        type=Path,
+        help="Path to BFM test configuration JSON",
+    )
+    parser_bfm.add_argument(
+        "--variant-json",
+        dest="variant_json",
+        default=Path.cwd() / "fm_variants" / "mig17f_fm_variants.json",
+        type=Path,
+        help="Path to FM variants JSON (enables multi-FM mode)",
+    )
+    parser_bfm.add_argument(
+        "--type-name",
+        dest="type_name",
+        default="vwv_mig17f",
+        help="MiG-17 DCS type name for single-FM mode",
+    )
+    parser_bfm.add_argument(
+        "--max-priority",
+        dest="max_priority",
+        type=int,
+        default=2,
+        choices=[1, 2, 3],
+        help="Maximum scenario priority (1=core, 2=standard, 3=all)",
+    )
+    parser_bfm.set_defaults(func=cmd_generate_bfm_mission)
+
+
+def add_analyze_bfm_parser(subparsers: argparse._SubParsersAction) -> None:
+    """Add the analyze-bfm subcommand parser."""
+    parser_analyze = subparsers.add_parser(
+        "analyze-bfm",
+        help="Analyze TacView ACMI file for BFM metrics",
+        description="Analyze a TacView ACMI file to extract BFM performance metrics "
+        "and assess whether the MiG-17F is operating within expected envelope.",
+    )
+    parser_analyze.add_argument(
+        "acmi_path",
+        type=Path,
+        help="Path to ACMI file (or 'latest' for most recent)",
+    )
+    parser_analyze.add_argument(
+        "--bfm-config",
+        dest="bfm_config",
+        type=Path,
+        default=Path.cwd() / "bfm_mission_tests.json",
+        help="Path to BFM config for envelope targets",
+    )
+    parser_analyze.add_argument(
+        "--output",
+        type=Path,
+        help="Path to write report (prints to stdout if not specified)",
+    )
+    parser_analyze.add_argument(
+        "--csv",
+        type=Path,
+        help="Path to write CSV output",
+    )
+    parser_analyze.set_defaults(func=cmd_analyze_bfm)
+
+
+def add_run_bfm_test_parser(subparsers: argparse._SubParsersAction) -> None:
+    """Add the run-bfm-test subcommand parser."""
+    parser_bfm_run = subparsers.add_parser(
+        "run-bfm-test",
+        help="Run complete BFM test workflow",
+        description="Orchestrate a complete BFM test: build variants, generate mission, "
+        "run DCS, capture TacView ACMI, and analyze results.",
+    )
+    parser_bfm_run.add_argument(
+        "--dcs-path",
+        type=Path,
+        help="Path to DCS installation directory",
+    )
+    parser_bfm_run.add_argument(
+        "--saved-games",
+        type=Path,
+        help="Path to DCS Saved Games directory",
+    )
+    parser_bfm_run.add_argument(
+        "--timeout",
+        type=int,
+        default=bfm_runner.DEFAULT_TIMEOUT_S,
+        help=f"Maximum wait time (default: {bfm_runner.DEFAULT_TIMEOUT_S}s)",
+    )
+    parser_bfm_run.add_argument(
+        "--max-priority",
+        dest="max_priority",
+        type=int,
+        default=2,
+        choices=[1, 2, 3],
+        help="Maximum scenario priority (1=core, 2=standard, 3=all)",
+    )
+    parser_bfm_run.add_argument(
+        "--skip-build",
+        action="store_true",
+        help="Skip building FM variants",
+    )
+    parser_bfm_run.add_argument(
+        "--skip-launch",
+        action="store_true",
+        help="Skip launching DCS",
+    )
+    parser_bfm_run.add_argument(
+        "--analyze-only",
+        type=str,
+        metavar="ACMI_PATH",
+        help="Skip test, only analyze ACMI ('latest' for most recent)",
+    )
+    parser_bfm_run.set_defaults(func=cmd_run_bfm_test)
+
+
 def create_parser() -> argparse.ArgumentParser:
     """Create the main argument parser with subcommands."""
     main_parser = argparse.ArgumentParser(
@@ -459,6 +800,9 @@ def create_parser() -> argparse.ArgumentParser:
     add_parse_log_parser(subparsers)
     add_build_variants_parser(subparsers)
     add_run_test_parser(subparsers)
+    add_generate_bfm_mission_parser(subparsers)
+    add_analyze_bfm_parser(subparsers)
+    add_run_bfm_test_parser(subparsers)
 
     return main_parser
 

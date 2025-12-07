@@ -1,0 +1,398 @@
+{
+  "version": 1,
+  "description": "BFM (Basic Fighter Maneuvering) test scenarios for MiG-17F flight envelope validation",
+  "mission_settings": {
+    "duration_seconds": 600,
+    "test_group_spacing_nm": 20,
+    "origin": {
+      "x": -100000,
+      "y": -300000
+    }
+  },
+  "flight_envelope_targets": {
+    "description": "Historical MiG-17F performance envelope targets",
+    "max_sustained_turn_rate_deg_s": 14.5,
+    "max_instantaneous_turn_rate_deg_s": 22.0,
+    "corner_speed_kt": 350,
+    "max_g_loading": 8.0,
+    "min_turn_radius_ft": 2200,
+    "optimal_bfm_altitude_ft": 15000,
+    "energy_bleed_threshold_kt_per_turn": 50,
+    "notes": "Based on historical MiG-17F Fresco C performance data"
+  },
+  "opponent_aircraft": [
+    {
+      "id": "f86",
+      "dcs_type_name": "F-86F Sabre",
+      "display_name": "F-86F Sabre",
+      "group_prefix": "F86",
+      "notes": "Historical adversary, similar performance class"
+    },
+    {
+      "id": "mig15",
+      "dcs_type_name": "MiG-15bis",
+      "display_name": "MiG-15bis",
+      "group_prefix": "MIG15",
+      "notes": "Predecessor aircraft, slightly lower performance"
+    },
+    {
+      "id": "mig19",
+      "dcs_type_name": "MiG-19P",
+      "display_name": "MiG-19P",
+      "group_prefix": "MIG19",
+      "notes": "Successor aircraft, higher performance - tests defensive capability"
+    },
+    {
+      "id": "mig21",
+      "dcs_type_name": "MiG-21Bis",
+      "display_name": "MiG-21bis",
+      "group_prefix": "MIG21",
+      "notes": "Much more capable aircraft - tests extreme defensive scenarios"
+    }
+  ],
+  "engagement_geometries": [
+    {
+      "id": "offensive_6",
+      "name": "Offensive Six O'Clock",
+      "description": "MiG-17 starts directly behind opponent at 6 o'clock",
+      "mig17_heading_deg": 0,
+      "opponent_heading_deg": 0,
+      "initial_range_nm": 1.5,
+      "mig17_offset_deg": 180,
+      "notes": "Tests ability to convert to guns solution from ideal position"
+    },
+    {
+      "id": "offensive_high",
+      "name": "Offensive High",
+      "description": "MiG-17 starts behind and above opponent",
+      "mig17_heading_deg": 0,
+      "opponent_heading_deg": 0,
+      "initial_range_nm": 2.0,
+      "mig17_offset_deg": 180,
+      "mig17_altitude_offset_ft": 3000,
+      "notes": "Tests dive attack capability"
+    },
+    {
+      "id": "offensive_low",
+      "name": "Offensive Low",
+      "description": "MiG-17 starts behind and below opponent",
+      "mig17_heading_deg": 0,
+      "opponent_heading_deg": 0,
+      "initial_range_nm": 2.0,
+      "mig17_offset_deg": 180,
+      "mig17_altitude_offset_ft": -2000,
+      "notes": "Tests zoom climb attack capability"
+    },
+    {
+      "id": "defensive_6",
+      "name": "Defensive Six O'Clock",
+      "description": "Opponent starts directly behind MiG-17 at 6 o'clock",
+      "mig17_heading_deg": 0,
+      "opponent_heading_deg": 0,
+      "initial_range_nm": 1.5,
+      "mig17_offset_deg": 0,
+      "notes": "Tests defensive break turn and reversal capability"
+    },
+    {
+      "id": "head_on",
+      "name": "Head-On Merge",
+      "description": "Aircraft approach head-on for neutral merge",
+      "mig17_heading_deg": 0,
+      "opponent_heading_deg": 180,
+      "initial_range_nm": 4.0,
+      "mig17_offset_deg": 0,
+      "notes": "Tests post-merge maneuvering and turn rate"
+    },
+    {
+      "id": "beam_left",
+      "name": "Beam Defense Left",
+      "description": "Opponent approaching from MiG-17's left beam (3 o'clock threat)",
+      "mig17_heading_deg": 0,
+      "opponent_heading_deg": 270,
+      "initial_range_nm": 2.0,
+      "mig17_offset_deg": 90,
+      "notes": "Tests break into threat and nose-to-nose conversion"
+    },
+    {
+      "id": "beam_right",
+      "name": "Beam Defense Right",
+      "description": "Opponent approaching from MiG-17's right beam (9 o'clock threat)",
+      "mig17_heading_deg": 0,
+      "opponent_heading_deg": 90,
+      "initial_range_nm": 2.0,
+      "mig17_offset_deg": 270,
+      "notes": "Tests break into threat and nose-to-nose conversion"
+    },
+    {
+      "id": "high_aspect_30",
+      "name": "High Aspect 30 Degrees",
+      "description": "High angle-off merge at 30 degrees",
+      "mig17_heading_deg": 0,
+      "opponent_heading_deg": 150,
+      "initial_range_nm": 3.0,
+      "mig17_offset_deg": 30,
+      "notes": "Tests ability to convert high-aspect pass"
+    }
+  ],
+  "altitude_bands": [
+    {
+      "id": "low",
+      "name": "Low Altitude",
+      "altitude_ft": 5000,
+      "notes": "High air density, maximum thrust available"
+    },
+    {
+      "id": "medium",
+      "name": "Medium Altitude",
+      "altitude_ft": 15000,
+      "notes": "Optimal BFM altitude for MiG-17F"
+    },
+    {
+      "id": "high",
+      "name": "High Altitude",
+      "altitude_ft": 25000,
+      "notes": "Reduced performance, tests high-altitude capability"
+    },
+    {
+      "id": "very_high",
+      "name": "Very High Altitude",
+      "altitude_ft": 35000,
+      "notes": "Near service ceiling, degraded maneuvering"
+    }
+  ],
+  "initial_speeds": [
+    {
+      "id": "corner",
+      "name": "Corner Speed",
+      "speed_kt": 350,
+      "notes": "Optimal sustained turn rate speed for MiG-17F"
+    },
+    {
+      "id": "cruise",
+      "name": "Cruise Speed",
+      "speed_kt": 300,
+      "notes": "Typical cruise speed"
+    },
+    {
+      "id": "fast",
+      "name": "High Speed",
+      "speed_kt": 450,
+      "notes": "High energy state, reduced turn rate"
+    }
+  ],
+  "test_scenarios": [
+    {
+      "id": "BFM_F86_OFF6_MED_CORNER",
+      "opponent": "f86",
+      "geometry": "offensive_6",
+      "altitude": "medium",
+      "speed": "corner",
+      "priority": 1,
+      "notes": "Core offensive capability vs historical adversary"
+    },
+    {
+      "id": "BFM_F86_DEF6_MED_CORNER",
+      "opponent": "f86",
+      "geometry": "defensive_6",
+      "altitude": "medium",
+      "speed": "corner",
+      "priority": 1,
+      "notes": "Core defensive capability vs historical adversary"
+    },
+    {
+      "id": "BFM_F86_HEAD_MED_CORNER",
+      "opponent": "f86",
+      "geometry": "head_on",
+      "altitude": "medium",
+      "speed": "corner",
+      "priority": 1,
+      "notes": "Neutral merge evaluation vs historical adversary"
+    },
+    {
+      "id": "BFM_F86_OFF6_LOW_CORNER",
+      "opponent": "f86",
+      "geometry": "offensive_6",
+      "altitude": "low",
+      "speed": "corner",
+      "priority": 2,
+      "notes": "Low altitude offensive performance"
+    },
+    {
+      "id": "BFM_F86_OFF6_HIGH_CORNER",
+      "opponent": "f86",
+      "geometry": "offensive_6",
+      "altitude": "high",
+      "speed": "corner",
+      "priority": 2,
+      "notes": "High altitude offensive performance"
+    },
+    {
+      "id": "BFM_F86_OFF6_MED_FAST",
+      "opponent": "f86",
+      "geometry": "offensive_6",
+      "altitude": "medium",
+      "speed": "fast",
+      "priority": 2,
+      "notes": "High speed offensive - tests energy management"
+    },
+    {
+      "id": "BFM_F86_BEAM_L_MED_CORNER",
+      "opponent": "f86",
+      "geometry": "beam_left",
+      "altitude": "medium",
+      "speed": "corner",
+      "priority": 2,
+      "notes": "Beam defense and conversion"
+    },
+    {
+      "id": "BFM_F86_HIGH_ASP_MED_CORNER",
+      "opponent": "f86",
+      "geometry": "high_aspect_30",
+      "altitude": "medium",
+      "speed": "corner",
+      "priority": 2,
+      "notes": "High aspect conversion test"
+    },
+    {
+      "id": "BFM_MIG15_OFF6_MED_CORNER",
+      "opponent": "mig15",
+      "geometry": "offensive_6",
+      "altitude": "medium",
+      "speed": "corner",
+      "priority": 2,
+      "notes": "Offensive vs predecessor aircraft"
+    },
+    {
+      "id": "BFM_MIG15_HEAD_MED_CORNER",
+      "opponent": "mig15",
+      "geometry": "head_on",
+      "altitude": "medium",
+      "speed": "corner",
+      "priority": 2,
+      "notes": "Neutral merge vs predecessor"
+    },
+    {
+      "id": "BFM_MIG19_DEF6_MED_CORNER",
+      "opponent": "mig19",
+      "geometry": "defensive_6",
+      "altitude": "medium",
+      "speed": "corner",
+      "priority": 2,
+      "notes": "Defensive vs superior aircraft - survivability test"
+    },
+    {
+      "id": "BFM_MIG19_HEAD_MED_CORNER",
+      "opponent": "mig19",
+      "geometry": "head_on",
+      "altitude": "medium",
+      "speed": "corner",
+      "priority": 2,
+      "notes": "Neutral merge vs superior aircraft"
+    },
+    {
+      "id": "BFM_MIG21_DEF6_MED_CORNER",
+      "opponent": "mig21",
+      "geometry": "defensive_6",
+      "altitude": "medium",
+      "speed": "corner",
+      "priority": 3,
+      "notes": "Extreme defensive - tests limits against much faster aircraft"
+    },
+    {
+      "id": "BFM_F86_OFF_HIGH_MED_CORNER",
+      "opponent": "f86",
+      "geometry": "offensive_high",
+      "altitude": "medium",
+      "speed": "corner",
+      "priority": 2,
+      "notes": "Energy advantage attack from above"
+    },
+    {
+      "id": "BFM_F86_OFF_LOW_MED_CORNER",
+      "opponent": "f86",
+      "geometry": "offensive_low",
+      "altitude": "medium",
+      "speed": "corner",
+      "priority": 2,
+      "notes": "Zoom attack from below"
+    },
+    {
+      "id": "BFM_F86_DEF6_LOW_CORNER",
+      "opponent": "f86",
+      "geometry": "defensive_6",
+      "altitude": "low",
+      "speed": "corner",
+      "priority": 2,
+      "notes": "Low altitude defensive - limited vertical options"
+    },
+    {
+      "id": "BFM_F86_DEF6_VHIGH_CORNER",
+      "opponent": "f86",
+      "geometry": "defensive_6",
+      "altitude": "very_high",
+      "speed": "corner",
+      "priority": 3,
+      "notes": "Very high altitude defensive - degraded performance test"
+    }
+  ],
+  "metrics_to_capture": {
+    "description": "Key BFM metrics to extract from ACMI telemetry",
+    "turn_metrics": {
+      "instantaneous_turn_rate_deg_s": "Peak turn rate achieved during engagement",
+      "sustained_turn_rate_deg_s": "Average turn rate over 360-degree turn",
+      "min_turn_radius_ft": "Smallest turn radius achieved",
+      "time_to_complete_360_s": "Time to complete one full turn"
+    },
+    "energy_metrics": {
+      "initial_speed_kt": "Speed at engagement start",
+      "min_speed_kt": "Minimum speed during engagement",
+      "final_speed_kt": "Speed at engagement end",
+      "energy_loss_per_360_kt": "Speed loss per 360-degree turn",
+      "time_to_corner_speed_s": "Time to decelerate to corner speed from high speed"
+    },
+    "engagement_metrics": {
+      "time_to_guns_solution_s": "Time from engagement start to valid guns tracking",
+      "aspect_angle_at_solution_deg": "Aspect angle when guns solution achieved",
+      "range_at_solution_ft": "Slant range when guns solution achieved",
+      "closure_rate_kt": "Closure rate at solution",
+      "total_engagement_time_s": "Duration of entire engagement"
+    },
+    "maneuvering_metrics": {
+      "max_g_loading": "Maximum G-force during engagement",
+      "avg_g_loading": "Average G-force during maneuvering",
+      "max_aoa_deg": "Maximum angle of attack",
+      "altitude_variation_ft": "Max altitude gained/lost during fight"
+    },
+    "outcome_metrics": {
+      "kill_achieved": "Whether simulated kill was achieved",
+      "time_to_kill_s": "Time from start to kill if achieved",
+      "survival_time_s": "Time survived in defensive scenario",
+      "reversal_achieved": "Whether defensive aircraft achieved role reversal"
+    }
+  },
+  "pass_fail_criteria": {
+    "description": "Criteria for determining if MiG-17F is performing within expected envelope",
+    "turn_rate": {
+      "sustained_min_deg_s": 12.0,
+      "sustained_max_deg_s": 17.0,
+      "instantaneous_min_deg_s": 18.0,
+      "instantaneous_max_deg_s": 25.0
+    },
+    "g_loading": {
+      "max_expected": 8.0,
+      "warning_threshold": 7.0
+    },
+    "energy_bleed": {
+      "max_kt_per_360_at_corner": 60,
+      "warning_threshold_kt_per_360": 45
+    },
+    "vs_f86_offensive": {
+      "max_time_to_guns_s": 45,
+      "expected_time_to_guns_s": 30
+    },
+    "vs_f86_defensive": {
+      "min_survival_time_s": 30,
+      "reversal_chance_expected": 0.5
+    }
+  }
+}

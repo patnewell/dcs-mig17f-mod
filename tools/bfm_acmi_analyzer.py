@@ -23,6 +23,9 @@ LOGGER = logging.getLogger(__name__)
 FT_PER_METER = 3.28084
 KT_PER_MPS = 1.94384
 FPM_PER_MPS = 196.85
+RAD2DEG = 180.0 / math.pi
+DEG2RAD = math.pi / 180.0
+G0 = 9.80665  # m/s^2
 
 
 @dataclass
@@ -420,7 +423,10 @@ def calculate_turn_rate(track: AircraftTrack, start_idx: int, end_idx: int) -> f
 
 
 def calculate_instantaneous_turn_rate(track: AircraftTrack) -> list[float]:
-    """Calculate instantaneous turn rate at each point.
+    """Calculate instantaneous turn rate at each point using U/V ground track.
+
+    Uses position changes to compute heading, then turn rate from heading
+    changes. This is more reliable than using the heading field directly.
 
     Args:
         track: Aircraft track
@@ -428,52 +434,283 @@ def calculate_instantaneous_turn_rate(track: AircraftTrack) -> list[float]:
     Returns:
         List of turn rates (deg/s) for each state
     """
-    turn_rates = [0.0]  # First point has no rate
+    n = len(track.states)
+    if n < 2:
+        return [0.0] * n
 
-    for i in range(1, len(track.states)):
+    # First compute ground-track heading from U/V position changes
+    headings_rad = [0.0] * n
+    speeds_mps = [0.0] * n
+
+    for i in range(1, n):
         curr = track.states[i]
         prev = track.states[i - 1]
 
         dt = curr.time - prev.time
-        if dt <= 0:
-            turn_rates.append(turn_rates[-1] if turn_rates else 0.0)
+        if dt <= 0 or dt > 5.0:
+            headings_rad[i] = headings_rad[i - 1]
+            speeds_mps[i] = speeds_mps[i - 1]
             continue
 
-        # Calculate heading change
-        dh = curr.heading_deg - prev.heading_deg
-        while dh > 180:
-            dh -= 360
-        while dh < -180:
-            dh += 360
+        # Use U/V coordinates if available
+        if curr.u is not None and prev.u is not None and curr.v is not None and prev.v is not None:
+            du = curr.u - prev.u
+            dv = curr.v - prev.v
+            vx = du / dt
+            vy = dv / dt
+            speed = math.hypot(vx, vy)
+            heading = math.atan2(vy, vx)  # -pi..pi
 
-        turn_rates.append(abs(dh) / dt)
+            speeds_mps[i] = speed
+            headings_rad[i] = heading
+        else:
+            # Fall back to heading field
+            headings_rad[i] = curr.heading_deg * DEG2RAD
+            if curr.tas_mps:
+                speeds_mps[i] = curr.tas_mps
+            else:
+                speeds_mps[i] = speeds_mps[i - 1]
 
-    return turn_rates
+    # Copy first element
+    if n >= 2:
+        speeds_mps[0] = speeds_mps[1]
+        headings_rad[0] = headings_rad[1]
+
+    # Unwrap heading to get continuous curve
+    unwrapped = [headings_rad[0]]
+    for i in range(1, n):
+        delta = headings_rad[i] - headings_rad[i - 1]
+        # Wrap to [-pi, pi]
+        while delta > math.pi:
+            delta -= 2 * math.pi
+        while delta < -math.pi:
+            delta += 2 * math.pi
+        unwrapped.append(unwrapped[-1] + delta)
+
+    # Compute turn rate from heading changes
+    turn_rates = [0.0] * n
+    for i in range(1, n):
+        dt = track.states[i].time - track.states[i - 1].time
+        if dt <= 0 or dt > 5.0:
+            turn_rates[i] = 0.0
+            continue
+        dpsi = unwrapped[i] - unwrapped[i - 1]  # rad
+        turn_rates[i] = abs(dpsi / dt) * RAD2DEG
+
+    # Apply 3-point moving average smoothing
+    smoothed = turn_rates[:]
+    for i in range(1, n - 1):
+        smoothed[i] = (turn_rates[i - 1] + turn_rates[i] + turn_rates[i + 1]) / 3.0
+
+    # Store computed speeds in track states for G calculation
+    for i, state in enumerate(track.states):
+        if state.tas_mps is None:
+            state.tas_mps = speeds_mps[i]
+
+    return smoothed
 
 
-def calculate_g_loading(track: AircraftTrack) -> list[float]:
-    """Estimate G-loading from bank angle and speed.
+def calculate_g_loading(
+    track: AircraftTrack,
+    turn_rates: list[float],
+    v_min_turn_kt: float = 150.0,
+) -> list[float]:
+    """Estimate G-loading from turn rate and speed using centripetal acceleration.
 
-    G = 1 / cos(bank) for level turn
+    G = v * omega / g0 (where omega is in rad/s)
+
+    This is more accurate than the bank-angle method because it directly
+    measures the actual centripetal acceleration being experienced.
 
     Args:
         track: Aircraft track
+        turn_rates: Turn rates in deg/s for each state
+        v_min_turn_kt: Minimum speed to consider for turn calculations
 
     Returns:
         List of estimated G values
     """
     g_values = []
+    v_min_turn_mps = v_min_turn_kt / KT_PER_MPS
+    omega_min_rad_s = 1.0 * DEG2RAD  # Ignore turns below 1 deg/s
 
-    for state in track.states:
-        bank_rad = abs(state.roll_deg) * math.pi / 180.0
+    for i, state in enumerate(track.states):
+        v = state.tas_mps if state.tas_mps else 0.0
+        omega_deg_s = turn_rates[i] if i < len(turn_rates) else 0.0
+        omega_rad_s = abs(omega_deg_s) * DEG2RAD
 
-        # Clamp to prevent divide by zero (max ~85 degrees)
-        bank_rad = min(bank_rad, 1.48)
+        if v > v_min_turn_mps and omega_rad_s > omega_min_rad_s:
+            g = v * omega_rad_s / G0
+        else:
+            g = 0.0
 
-        g = 1.0 / math.cos(bank_rad)
         g_values.append(g)
 
     return g_values
+
+
+def calculate_turn_radius(
+    track: AircraftTrack,
+    turn_rates: list[float],
+    v_min_turn_kt: float = 150.0,
+) -> list[Optional[float]]:
+    """Calculate instantaneous turn radius at each point.
+
+    R = V / omega (V in m/s, omega in rad/s)
+
+    Args:
+        track: Aircraft track
+        turn_rates: Turn rates in deg/s for each state
+        v_min_turn_kt: Minimum speed to consider for turn calculations
+
+    Returns:
+        List of turn radii in feet (None for non-turning points)
+    """
+    radii: list[Optional[float]] = []
+    v_min_turn_mps = v_min_turn_kt / KT_PER_MPS
+    omega_min_rad_s = 1.0 * DEG2RAD  # Ignore turns below 1 deg/s
+
+    for i, state in enumerate(track.states):
+        v = state.tas_mps if state.tas_mps else 0.0
+        omega_deg_s = turn_rates[i] if i < len(turn_rates) else 0.0
+        omega_rad_s = abs(omega_deg_s) * DEG2RAD
+
+        if v > v_min_turn_mps and omega_rad_s > omega_min_rad_s:
+            r_m = v / omega_rad_s
+            radii.append(r_m * FT_PER_METER)
+        else:
+            radii.append(None)
+
+    return radii
+
+
+def calculate_sustained_turn_rate(
+    track: AircraftTrack,
+    turn_rates: list[float],
+    g_values: list[float],
+    v_min_turn_kt: float = 150.0,
+    tr_min_for_seq_deg_s: float = 8.0,
+    min_seq_duration_s: float = 1.5,
+) -> dict[str, Optional[float]]:
+    """Find the best sustained turn rate segment.
+
+    A sustained turn is a continuous period where the aircraft maintains
+    a meaningful turn rate (>= tr_min_for_seq_deg_s) for at least
+    min_seq_duration_s seconds.
+
+    Args:
+        track: Aircraft track
+        turn_rates: Turn rates in deg/s for each state
+        g_values: G-loading values for each state
+        v_min_turn_kt: Minimum speed to consider for turn calculations
+        tr_min_for_seq_deg_s: Minimum turn rate to consider as "turning"
+        min_seq_duration_s: Minimum duration of sustained turn segment
+
+    Returns:
+        Dict with best_sustained_tr_deg_s, sustained_window_s,
+        sustained_speed_kt, sustained_g
+    """
+    n = len(track.states)
+    if n < 5:
+        return {
+            "best_sustained_tr_deg_s": 0.0,
+            "sustained_window_s": 0.0,
+            "sustained_speed_kt": None,
+            "sustained_g": None,
+        }
+
+    best_sust_tr = 0.0
+    best_sust_speed: Optional[float] = None
+    best_sust_g: Optional[float] = None
+    best_sust_dur = 0.0
+
+    in_run = False
+    run_start = 0
+
+    for i in range(1, n):
+        state = track.states[i]
+        speed_kt = (state.tas_mps * KT_PER_MPS) if state.tas_mps else 0.0
+        tr = turn_rates[i] if i < len(turn_rates) else 0.0
+
+        # Condition for being "in a turn"
+        if abs(tr) >= tr_min_for_seq_deg_s and speed_kt >= v_min_turn_kt:
+            if not in_run:
+                in_run = True
+                run_start = max(0, i - 1)  # Include one prior sample
+        else:
+            if in_run:
+                # Close run at i-1
+                run_end = i
+                in_run = False
+
+                # Compute duration and average metrics for this run
+                result = _compute_run_metrics(
+                    track, turn_rates, g_values, run_start, run_end, min_seq_duration_s
+                )
+                if result and result["avg_tr"] > best_sust_tr:
+                    best_sust_tr = result["avg_tr"]
+                    best_sust_speed = result["avg_speed"]
+                    best_sust_g = result["avg_g"]
+                    best_sust_dur = result["duration"]
+
+    # Close run if it extends to the end
+    if in_run:
+        run_end = n
+        result = _compute_run_metrics(
+            track, turn_rates, g_values, run_start, run_end, min_seq_duration_s
+        )
+        if result and result["avg_tr"] > best_sust_tr:
+            best_sust_tr = result["avg_tr"]
+            best_sust_speed = result["avg_speed"]
+            best_sust_g = result["avg_g"]
+            best_sust_dur = result["duration"]
+
+    return {
+        "best_sustained_tr_deg_s": best_sust_tr,
+        "sustained_window_s": best_sust_dur,
+        "sustained_speed_kt": best_sust_speed,
+        "sustained_g": best_sust_g,
+    }
+
+
+def _compute_run_metrics(
+    track: AircraftTrack,
+    turn_rates: list[float],
+    g_values: list[float],
+    run_start: int,
+    run_end: int,
+    min_seq_duration_s: float,
+) -> Optional[dict[str, float]]:
+    """Compute metrics for a turn run segment."""
+    sum_dt = 0.0
+    sum_tr_dt = 0.0
+    sum_speed_dt = 0.0
+    sum_g_dt = 0.0
+
+    for j in range(run_start + 1, run_end):
+        prev_state = track.states[j - 1]
+        curr_state = track.states[j]
+        dt = curr_state.time - prev_state.time
+        if dt <= 0 or dt > 5.0:
+            continue
+
+        speed_kt = (curr_state.tas_mps * KT_PER_MPS) if curr_state.tas_mps else 0.0
+        tr = turn_rates[j] if j < len(turn_rates) else 0.0
+        g = g_values[j] if j < len(g_values) else 0.0
+
+        sum_dt += dt
+        sum_tr_dt += abs(tr) * dt
+        sum_speed_dt += speed_kt * dt
+        sum_g_dt += g * dt
+
+    if sum_dt >= min_seq_duration_s and sum_dt > 0:
+        return {
+            "avg_tr": sum_tr_dt / sum_dt,
+            "avg_speed": sum_speed_dt / sum_dt,
+            "avg_g": sum_g_dt / sum_dt,
+            "duration": sum_dt,
+        }
+    return None
 
 
 def calculate_range(state1: AircraftState, state2: AircraftState) -> float:
@@ -513,16 +750,66 @@ def calculate_range(state1: AircraftState, state2: AircraftState) -> float:
     return math.sqrt(horizontal_dist ** 2 + dalt ** 2)
 
 
+def classify_range(value: Optional[float], vmin: float, vmax: float) -> str:
+    """Classify a value against min/max thresholds."""
+    if value is None:
+        return "N/A"
+    if value < vmin:
+        return "UNDER"
+    if value > vmax:
+        return "OVER"
+    return "WITHIN"
+
+
+def classify_g(g: float, warn: float, gmax: float) -> str:
+    """Classify G-loading against warning and max thresholds."""
+    if g <= warn:
+        return "WITHIN"
+    if g <= gmax:
+        return "WARNING"
+    return "OVER"
+
+
+def classify_radius(
+    radius_ft: Optional[float],
+    target_min_ft: float,
+    tight_factor: float = 0.8,
+    loose_factor: float = 1.25,
+) -> str:
+    """Classify turn radius vs target minimum radius."""
+    if radius_ft is None:
+        return "N/A"
+    if radius_ft < target_min_ft * tight_factor:
+        return "TIGHT_OVER"  # Suspiciously tight radius
+    if radius_ft > target_min_ft * loose_factor:
+        return "LOOSE_UNDER"  # Not using full capability
+    return "WITHIN"
+
+
+def overall_envelope_status(
+    inst_status: str,
+    sust_status: str,
+    g_status: str,
+    radius_status: str,
+) -> str:
+    """Determine combined envelope status."""
+    if g_status == "OVER" or inst_status == "OVER" or radius_status == "TIGHT_OVER":
+        return "OVER"
+    if inst_status == "UNDER" and sust_status == "UNDER":
+        return "UNDER"
+    return "NOMINAL"
+
+
 def analyze_engagement(
     mig17_track: AircraftTrack,
-    opponent_track: AircraftTrack,
+    opponent_track: Optional[AircraftTrack],
     envelope_targets: dict,
 ) -> BFMAnalysisResult:
     """Analyze a BFM engagement between MiG-17 and opponent.
 
     Args:
         mig17_track: Track of the MiG-17
-        opponent_track: Track of the opponent aircraft
+        opponent_track: Track of the opponent aircraft (optional for single-aircraft analysis)
         envelope_targets: Expected performance envelope values
 
     Returns:
@@ -530,7 +817,8 @@ def analyze_engagement(
     """
     # Calculate derived values
     calculate_derived_values(mig17_track)
-    calculate_derived_values(opponent_track)
+    if opponent_track:
+        calculate_derived_values(opponent_track)
 
     # Get scenario ID from group name
     scenario_id = mig17_track.group_name
@@ -540,9 +828,40 @@ def analyze_engagement(
         variant = parts[0]
         scenario_id = parts[1] if len(parts) > 1 else scenario_id
 
-    # Calculate turn metrics
+    # Extract envelope thresholds
+    sustained_min = envelope_targets.get("sustained_min_deg_s", 12.0)
+    sustained_max = envelope_targets.get("sustained_max_deg_s", 17.0)
+    instant_min = envelope_targets.get("instantaneous_min_deg_s", 18.0)
+    instant_max = envelope_targets.get("instantaneous_max_deg_s", 25.0)
+    g_warning = envelope_targets.get("g_warning", 7.0)
+    g_max = envelope_targets.get("g_max", 8.0)
+    min_turn_radius_ft = envelope_targets.get("min_turn_radius_ft", 2200.0)
+
+    # Calculate turn metrics using new ground-track based method
     turn_rates = calculate_instantaneous_turn_rate(mig17_track)
-    max_turn_rate = max(turn_rates) if turn_rates else 0.0
+
+    # Calculate G-loading using physics-based formula (needs turn_rates)
+    g_values = calculate_g_loading(mig17_track, turn_rates)
+
+    # Calculate turn radii
+    radii = calculate_turn_radius(mig17_track, turn_rates)
+
+    # Calculate sustained turn rate
+    sustained_result = calculate_sustained_turn_rate(
+        mig17_track, turn_rates, g_values
+    )
+
+    # Find max instantaneous turn rate (with speed filter)
+    max_turn_rate = 0.0
+    idx_max_tr = 0
+    v_min_kt = 150.0
+    for i, state in enumerate(mig17_track.states):
+        speed_kt = (state.tas_mps * KT_PER_MPS) if state.tas_mps else 0.0
+        if speed_kt < v_min_kt:
+            continue
+        if turn_rates[i] > max_turn_rate:
+            max_turn_rate = turn_rates[i]
+            idx_max_tr = i
 
     # Calculate average turn rate (exclude first/last 10%)
     trim = len(turn_rates) // 10
@@ -551,23 +870,14 @@ def analyze_engagement(
     else:
         avg_turn_rate = sum(turn_rates) / len(turn_rates) if turn_rates else 0.0
 
-    # Calculate minimum turn radius from speed and turn rate
-    # R = V / omega (V in m/s, omega in rad/s)
-    min_radius_ft = float("inf")
-    for i, state in enumerate(mig17_track.states):
-        if turn_rates[i] > 0 and state.tas_mps:
-            omega_rad_s = turn_rates[i] * math.pi / 180.0
-            radius_m = state.tas_mps / omega_rad_s
-            radius_ft = radius_m * FT_PER_METER
-            min_radius_ft = min(min_radius_ft, radius_ft)
-
-    if min_radius_ft == float("inf"):
-        min_radius_ft = 0.0
+    # Find minimum turn radius
+    valid_radii = [r for r in radii if r is not None]
+    min_radius = min(valid_radii) if valid_radii else 0.0
 
     turn_metrics = TurnMetrics(
         max_turn_rate_deg_s=max_turn_rate,
         avg_turn_rate_deg_s=avg_turn_rate,
-        min_turn_radius_ft=min_radius_ft,
+        min_turn_radius_ft=min_radius,
     )
 
     # Calculate energy metrics
@@ -588,13 +898,14 @@ def analyze_engagement(
     )
 
     # Calculate maneuvering metrics
-    g_values = calculate_g_loading(mig17_track)
+    max_g = max(g_values) if g_values else 0.0
+    avg_g = sum(g_values) / len(g_values) if g_values else 0.0
     bank_angles = [abs(s.roll_deg) for s in mig17_track.states]
     aoa_values = [s.aoa_deg for s in mig17_track.states if s.aoa_deg is not None]
 
     maneuvering_metrics = ManeuveringMetrics(
-        max_g_loading=max(g_values) if g_values else 0.0,
-        avg_g_loading=sum(g_values) / len(g_values) if g_values else 0.0,
+        max_g_loading=max_g,
+        avg_g_loading=avg_g,
         max_aoa_deg=max(aoa_values) if aoa_values else 0.0,
         max_bank_deg=max(bank_angles) if bank_angles else 0.0,
     )
@@ -604,57 +915,75 @@ def analyze_engagement(
     if mig17_track.states:
         duration = mig17_track.states[-1].time - mig17_track.states[0].time
 
-    ranges_ft = []
-    for i, mig_state in enumerate(mig17_track.states):
-        # Find closest opponent state in time
-        closest_opp = None
-        min_time_diff = float("inf")
-        for opp_state in opponent_track.states:
-            time_diff = abs(opp_state.time - mig_state.time)
-            if time_diff < min_time_diff:
-                min_time_diff = time_diff
-                closest_opp = opp_state
+    ranges_ft: list[float] = []
+    if opponent_track and opponent_track.states:
+        for mig_state in mig17_track.states:
+            # Find closest opponent state in time
+            closest_opp = None
+            min_time_diff = float("inf")
+            for opp_state in opponent_track.states:
+                time_diff = abs(opp_state.time - mig_state.time)
+                if time_diff < min_time_diff:
+                    min_time_diff = time_diff
+                    closest_opp = opp_state
 
-        if closest_opp:
-            range_m = calculate_range(mig_state, closest_opp)
-            ranges_ft.append(range_m * FT_PER_METER)
+            if closest_opp:
+                range_m = calculate_range(mig_state, closest_opp)
+                ranges_ft.append(range_m * FT_PER_METER)
 
     engagement_metrics = EngagementMetrics(
         duration_s=duration,
         initial_range_ft=ranges_ft[0] if ranges_ft else 0.0,
         min_range_ft=min(ranges_ft) if ranges_ft else 0.0,
-        time_to_min_range_s=None,  # Would need more logic to calculate
+        time_to_min_range_s=None,
         closure_achieved=min(ranges_ft) < ranges_ft[0] if ranges_ft else False,
     )
 
-    # Assess envelope performance
+    # Classify performance against envelope thresholds
+    inst_status = classify_range(max_turn_rate, instant_min, instant_max)
+    sust_status = classify_range(
+        sustained_result["best_sustained_tr_deg_s"], sustained_min, sustained_max
+    )
+    g_status = classify_g(max_g, g_warning, g_max)
+    radius_status = classify_radius(min_radius if min_radius > 0 else None, min_turn_radius_ft)
+
+    envelope_assessment = overall_envelope_status(
+        inst_status, sust_status, g_status, radius_status
+    )
+
+    # Build notes
     notes = []
-    envelope_assessment = "NOMINAL"
+    if inst_status == "OVER":
+        notes.append(
+            f"Max inst TR {max_turn_rate:.1f} deg/s exceeds {instant_max} deg/s [{inst_status}]"
+        )
+    elif inst_status == "UNDER":
+        notes.append(
+            f"Max inst TR {max_turn_rate:.1f} deg/s below {instant_min} deg/s [{inst_status}]"
+        )
 
-    # Check turn rate
-    target_sustained = envelope_targets.get("max_sustained_turn_rate_deg_s", 14.5)
-    target_instant = envelope_targets.get("max_instantaneous_turn_rate_deg_s", 22.0)
+    if g_status == "OVER":
+        notes.append(f"Max G {max_g:.2f} exceeds limit {g_max} [{g_status}]")
+    elif g_status == "WARNING":
+        notes.append(f"Max G {max_g:.2f} above warning threshold {g_warning} [{g_status}]")
 
-    if max_turn_rate > target_instant * 1.15:
-        envelope_assessment = "OVER"
-        notes.append(f"Turn rate {max_turn_rate:.1f} deg/s exceeds target {target_instant} by >15%")
-    elif max_turn_rate < target_instant * 0.85:
-        envelope_assessment = "UNDER"
-        notes.append(f"Turn rate {max_turn_rate:.1f} deg/s below target {target_instant} by >15%")
+    if radius_status == "TIGHT_OVER":
+        notes.append(
+            f"Min radius {min_radius:.0f} ft below expected {min_turn_radius_ft} ft [{radius_status}]"
+        )
 
-    # Check G loading
-    target_g = envelope_targets.get("max_g_loading", 8.0)
-    if maneuvering_metrics.max_g_loading > target_g * 1.1:
-        if envelope_assessment == "NOMINAL":
-            envelope_assessment = "OVER"
-        notes.append(f"G-loading {maneuvering_metrics.max_g_loading:.1f}G exceeds limit {target_g}G")
+    if sustained_result["best_sustained_tr_deg_s"] > 0:
+        notes.append(
+            f"Best sustained TR: {sustained_result['best_sustained_tr_deg_s']:.1f} deg/s "
+            f"over {sustained_result['sustained_window_s']:.1f}s [{sust_status}]"
+        )
 
     return BFMAnalysisResult(
         scenario_id=scenario_id,
         mig17_group=mig17_track.group_name,
-        opponent_group=opponent_track.group_name,
+        opponent_group=opponent_track.group_name if opponent_track else "",
         mig17_variant=variant,
-        opponent_type=opponent_track.aircraft_type,
+        opponent_type=opponent_track.aircraft_type if opponent_track else "",
         turn_metrics=turn_metrics,
         energy_metrics=energy_metrics,
         maneuvering_metrics=maneuvering_metrics,
@@ -691,48 +1020,148 @@ def find_engagement_pairs(tracks: dict[str, AircraftTrack]) -> list[tuple[Aircra
     return pairs
 
 
+def object_matches_filter(track: AircraftTrack, filter_str: str) -> bool:
+    """Check if track matches the filter substring (case-insensitive).
+
+    Args:
+        track: Aircraft track to check
+        filter_str: Substring to match against Name, Type, or Group
+
+    Returns:
+        True if any field contains the filter substring
+    """
+    f = filter_str.lower()
+    if track.name and f in track.name.lower():
+        return True
+    if track.aircraft_type and f in track.aircraft_type.lower():
+        return True
+    if track.group_name and f in track.group_name.lower():
+        return True
+    return False
+
+
+def load_envelope_targets(config_path: Optional[Path]) -> dict:
+    """Load envelope targets from config file.
+
+    Supports the bfm_mission_tests.json format with nested structure.
+
+    Args:
+        config_path: Path to config file
+
+    Returns:
+        Dict with envelope threshold values
+    """
+    # Default envelope values matching bfm_mission_tests.json
+    env = {
+        "sustained_min_deg_s": 12.0,
+        "sustained_max_deg_s": 17.0,
+        "instantaneous_min_deg_s": 18.0,
+        "instantaneous_max_deg_s": 25.0,
+        "corner_speed_kt": 350.0,
+        "min_turn_radius_ft": 2200.0,
+        "g_warning": 7.0,
+        "g_max": 8.0,
+    }
+
+    if not config_path or not config_path.exists():
+        return env
+
+    try:
+        with config_path.open("r", encoding="utf-8") as f:
+            cfg = json.load(f)
+    except Exception as e:
+        LOGGER.warning("Failed to load envelope JSON (%s), using defaults.", e)
+        return env
+
+    # Parse nested structure from bfm_mission_tests.json
+    ft = cfg.get("flight_envelope_targets", {})
+    pf = cfg.get("pass_fail_criteria", {}).get("turn_rate", {})
+    g_cfg = cfg.get("pass_fail_criteria", {}).get("g_loading", {})
+
+    # Turn rate ranges
+    env["sustained_min_deg_s"] = pf.get("sustained_min_deg_s", env["sustained_min_deg_s"])
+    env["sustained_max_deg_s"] = pf.get("sustained_max_deg_s", env["sustained_max_deg_s"])
+    env["instantaneous_min_deg_s"] = pf.get(
+        "instantaneous_min_deg_s", env["instantaneous_min_deg_s"]
+    )
+    env["instantaneous_max_deg_s"] = pf.get(
+        "instantaneous_max_deg_s", env["instantaneous_max_deg_s"]
+    )
+
+    # Corner speed & radius
+    env["corner_speed_kt"] = ft.get("corner_speed_kt", env["corner_speed_kt"])
+    env["min_turn_radius_ft"] = ft.get("min_turn_radius_ft", env["min_turn_radius_ft"])
+
+    # G limits
+    env["g_max"] = g_cfg.get("max_expected", env["g_max"])
+    env["g_warning"] = g_cfg.get("warning_threshold", env["g_warning"])
+
+    return env
+
+
 def analyze_acmi_file(
     acmi_path: Path,
     bfm_config_path: Optional[Path] = None,
+    object_filter: Optional[str] = None,
 ) -> list[BFMAnalysisResult]:
     """Analyze an ACMI file for BFM test results.
+
+    Supports both paired engagement analysis (MiG-17 vs opponent) and
+    single-aircraft analysis when using object_filter.
 
     Args:
         acmi_path: Path to the ACMI file
         bfm_config_path: Optional path to BFM config for envelope targets
+        object_filter: Optional substring to filter which aircraft to analyze
+            (matches against Name, Type, or Group). If not provided,
+            defaults to matching 'vwv_mig17f'.
 
     Returns:
-        List of BFMAnalysisResult for each engagement
+        List of BFMAnalysisResult for each analyzed aircraft
     """
     LOGGER.info("Parsing ACMI file: %s", acmi_path)
 
     # Load envelope targets
-    envelope_targets = {}
-    if bfm_config_path and bfm_config_path.exists():
-        with bfm_config_path.open("r", encoding="utf-8") as f:
-            config = json.load(f)
-            envelope_targets = config.get("flight_envelope_targets", {})
+    envelope_targets = load_envelope_targets(bfm_config_path)
 
     # Parse ACMI
     tracks = parse_acmi_file(acmi_path)
     LOGGER.info("Found %d aircraft tracks", len(tracks))
 
-    # Find engagement pairs
-    pairs = find_engagement_pairs(tracks)
-    LOGGER.info("Found %d engagement pairs", len(pairs))
-
-    # Analyze each pair
     results = []
-    for mig17_track, opponent_track in pairs:
-        if len(mig17_track.states) < 10 or len(opponent_track.states) < 10:
-            LOGGER.warning(
-                "Skipping %s - insufficient data points",
-                mig17_track.group_name,
-            )
+
+    # If object_filter is specified, do single-aircraft analysis
+    filter_str = object_filter if object_filter else "vwv_mig17f"
+
+    for track in tracks.values():
+        if not track.states or len(track.states) < 5:
             continue
 
-        result = analyze_engagement(mig17_track, opponent_track, envelope_targets)
+        if not object_matches_filter(track, filter_str):
+            continue
+
+        LOGGER.info("Analyzing track: %s (%s)", track.name, track.group_name)
+
+        # For single-aircraft analysis, pass None as opponent
+        result = analyze_engagement(track, None, envelope_targets)
         results.append(result)
+
+    # If no results from filter, try engagement pairs as fallback
+    if not results:
+        LOGGER.info("No matching objects found, trying engagement pairs...")
+        pairs = find_engagement_pairs(tracks)
+        LOGGER.info("Found %d engagement pairs", len(pairs))
+
+        for mig17_track, opponent_track in pairs:
+            if len(mig17_track.states) < 10 or len(opponent_track.states) < 10:
+                LOGGER.warning(
+                    "Skipping %s - insufficient data points",
+                    mig17_track.group_name,
+                )
+                continue
+
+            result = analyze_engagement(mig17_track, opponent_track, envelope_targets)
+            results.append(result)
 
     return results
 
@@ -874,10 +1303,19 @@ def parse_args() -> argparse.Namespace:
         help="Path to TacView ACMI file",
     )
     parser.add_argument(
+        "--object-filter",
+        dest="object_filter",
+        help=(
+            "Substring to select which aircraft to analyze "
+            "(matches Name/Type/Group). Default: 'vwv_mig17f'"
+        ),
+        default=None,
+    )
+    parser.add_argument(
         "--bfm-config",
         dest="bfm_config",
         type=Path,
-        help="Path to BFM test configuration JSON",
+        help="Path to BFM test configuration JSON (envelope thresholds)",
     )
     parser.add_argument(
         "--output",
@@ -905,7 +1343,7 @@ def main() -> int:
         LOGGER.error("ACMI file not found: %s", args.acmi_path)
         return 1
 
-    results = analyze_acmi_file(args.acmi_path, args.bfm_config)
+    results = analyze_acmi_file(args.acmi_path, args.bfm_config, args.object_filter)
 
     if not results:
         LOGGER.warning("No BFM engagement data found in ACMI file")

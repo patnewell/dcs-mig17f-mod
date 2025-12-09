@@ -77,6 +77,9 @@ The MiG-17 excelled in close-range dogfights where its superior maneuverability 
   - `mig17_fm_tool.py`: **unified CLI tool** with subcommands for all FM development tasks
   - `setup_env.py`: environment bootstrap for dependencies
   - `generate_mig17_fm_test_mission.py`: FM test mission generator module
+  - `generate_bfm_test_mission.py`: BFM (dogfight) test mission generator
+  - `bfm_acmi_analyzer.py`: TacView ACMI analyzer for BFM metrics
+  - `run_bfm_test.py`: BFM test orchestration module
   - `parse_fm_test_log.py`: log parsing module
   - `build_mig17f_variants_from_json.py`: variant building module
   - `run_fm_test.py`: test orchestration module
@@ -84,6 +87,7 @@ The MiG-17 excelled in close-range dogfights where its superior maneuverability 
 - `fm_variants/`: flight model variant configuration for A/B testing different SFM coefficients:
   - `mig17f_fm_variants.json`: variant definitions with scaling factors (checked in)
   - `mods/`: generated variant mod folders (gitignored; regenerate with build-variants command)
+- `bfm_mission_tests.json`: BFM scenario definitions (opponents, geometries, altitudes, pass/fail criteria)
 - `Tests/`: mission scripts and notes for manual flight-model checks.
 - `test_runs/`: archived test run data (gitignored; created by run-test command)
 - `codex_ref/`: reference aircraft data (MiG-15bis, MiG-19P, MiG-21bis Lua files) and a sample `.miz` used by the tooling tests.
@@ -121,6 +125,9 @@ python -m tools.mig17_fm_tool <command> [options]
 | `parse-log` | Parse DCS log for test results |
 | `build-variants` | Build FM variant mods from JSON configuration |
 | `run-test` | Run complete FM test workflow (build, install, test, analyze) |
+| `generate-bfm-mission` | Generate BFM (dogfight) test mission |
+| `analyze-bfm` | Analyze TacView ACMI file for BFM metrics |
+| `run-bfm-test` | Run complete BFM test workflow |
 
 Use `python -m tools.mig17_fm_tool <command> --help` for detailed options.
 

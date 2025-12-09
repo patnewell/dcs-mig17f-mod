@@ -1,0 +1,146 @@
+{
+  "version": 1,
+  "description": "Golden records for BFM ACMI analyzer E2E tests. Values captured from manual test flights with FM5 variant.",
+  "envelope_config": "bfm_mission_tests.json",
+  "object_filter": "vwv_mig17f_fm5",
+  "test_files": [
+    {
+      "filename": "mig17_vs_pat_f4e_1000MSL_01.zip.acmi",
+      "description": "Manual BFM test flight 01 - FM5 vs F-4E at 1000ft MSL",
+      "expected": {
+        "num_matching_tracks": 1,
+        "aircraft_name": "vwv_mig17f_fm5",
+        "group_name": "MiG-17-FM5",
+        "envelope_assessment": "OVER",
+        "duration_s": {
+          "value": 128.5,
+          "tolerance": 1.0
+        },
+        "max_turn_rate_deg_s": {
+          "value": 34.7,
+          "tolerance": 1.0
+        },
+        "best_sustained_tr_deg_s": {
+          "value": 25.8,
+          "tolerance": 1.0
+        },
+        "sustained_window_s": {
+          "value": 8.0,
+          "tolerance": 1.0
+        },
+        "min_turn_radius_ft": {
+          "value": 902,
+          "tolerance": 50
+        },
+        "max_g": {
+          "value": 10.4,
+          "tolerance": 0.5
+        },
+        "min_speed_kt": {
+          "value": 249,
+          "tolerance": 10
+        },
+        "max_speed_kt": {
+          "value": 483,
+          "tolerance": 10
+        },
+        "altitude_variation_ft": {
+          "value": 7841,
+          "tolerance": 200
+        }
+      }
+    },
+    {
+      "filename": "mig17_vs_pat_f4e_1000MSL_02.zip.acmi",
+      "description": "Manual BFM test flight 02 - FM5 vs F-4E at 1000ft MSL",
+      "expected": {
+        "num_matching_tracks": 1,
+        "aircraft_name": "vwv_mig17f_fm5",
+        "group_name": "MiG-17-FM5",
+        "envelope_assessment": "OVER",
+        "duration_s": {
+          "value": 112.0,
+          "tolerance": 1.0
+        },
+        "max_turn_rate_deg_s": {
+          "value": 58.2,
+          "tolerance": 2.0
+        },
+        "best_sustained_tr_deg_s": {
+          "value": 28.7,
+          "tolerance": 1.0
+        },
+        "sustained_window_s": {
+          "value": 5.7,
+          "tolerance": 1.0
+        },
+        "min_turn_radius_ft": {
+          "value": 262,
+          "tolerance": 30
+        },
+        "max_g": {
+          "value": 10.4,
+          "tolerance": 0.5
+        },
+        "min_speed_kt": {
+          "value": 52,
+          "tolerance": 10
+        },
+        "max_speed_kt": {
+          "value": 492,
+          "tolerance": 10
+        },
+        "altitude_variation_ft": {
+          "value": 8011,
+          "tolerance": 200
+        }
+      }
+    },
+    {
+      "filename": "mig17_vs_pat_f4e_1000MSL_03.zip.acmi",
+      "description": "Manual BFM test flight 03 - FM5 vs F-4E at 1000ft MSL",
+      "expected": {
+        "num_matching_tracks": 1,
+        "aircraft_name": "vwv_mig17f_fm5",
+        "group_name": "MiG-17-FM5",
+        "envelope_assessment": "OVER",
+        "duration_s": {
+          "value": 329.3,
+          "tolerance": 1.0
+        },
+        "max_turn_rate_deg_s": {
+          "value": 58.4,
+          "tolerance": 2.0
+        },
+        "best_sustained_tr_deg_s": {
+          "value": 28.6,
+          "tolerance": 1.0
+        },
+        "sustained_window_s": {
+          "value": 5.3,
+          "tolerance": 1.0
+        },
+        "min_turn_radius_ft": {
+          "value": 305,
+          "tolerance": 30
+        },
+        "max_g": {
+          "value": 10.9,
+          "tolerance": 0.5
+        },
+        "min_speed_kt": {
+          "value": 10,
+          "tolerance": 10
+        },
+        "max_speed_kt": {
+          "value": 591,
+          "tolerance": 10
+        },
+        "altitude_variation_ft": {
+          "value": 15777,
+          "tolerance": 300
+        }
+      }
+    }
+  ]
+}

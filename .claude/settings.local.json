@@ -17,7 +17,8 @@
       "WebFetch(domain:www.tacview.net)",
       "Bash(for f in test_runs/manual_pat_bfm/*.acmi)",
       "Bash(do echo \"=== $f ===\")",
-      "Bash(done)"
+      "Bash(done)",
+      "Bash(git reset:*)"
     ],
     "deny": [],
     "ask": []

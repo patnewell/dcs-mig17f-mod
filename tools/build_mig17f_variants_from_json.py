@@ -33,6 +33,11 @@ class Scales:
     polar: float
     engine_drag: float
     pfor: float
+    polar_high_aoa: float = 1.0  # Additional B2/B4 multiplier at low Mach (high-AoA regime)
+    cymax_high_aoa: float = 1.0  # Cymax multiplier at low Mach (limits max lift/G)
+
+# Mach threshold below which high-AoA scaling is applied
+HIGH_AOA_MACH_THRESHOLD = 0.5
 
 
 @dataclass(frozen=True)
@@ -75,6 +80,8 @@ def load_variant_config(json_path: Path) -> VariantConfig:
             polar=v["scales"]["polar"],
             engine_drag=v["scales"]["engine_drag"],
             pfor=v["scales"]["pfor"],
+            polar_high_aoa=v["scales"].get("polar_high_aoa", 1.0),
+            cymax_high_aoa=v["scales"].get("cymax_high_aoa", 1.0),
         )
         variants.append(
             Variant(
@@ -103,20 +110,24 @@ def scale_aero_table_data(lua_content: str, scales: Scales) -> str:
     """Apply scaling to aerodynamics.table_data entries.
 
     Each row in table_data is: { M, Cx0, Cya, B2, B4, Omxmax, Aldop, Cymax }
-    We multiply: Cx0 by scales.cx0, B2 and B4 by scales.polar.
+    We multiply:
+    - Cx0 by scales.cx0
+    - B2 and B4 by scales.polar (and additionally by scales.polar_high_aoa at low Mach)
+    - Cymax by scales.cymax_high_aoa at low Mach (to limit max lift/G in high-AoA regime)
     """
     # Pattern to match table rows in aerodynamics.table_data
-    # Example: { 0.0,  0.0162  ,       0.0715 ,       0.072   ,       0.010   , ...}
+    # Example: { 0.0,  0.0162, 0.0715, 0.072, 0.010, 3.0, 30.0, 1.4 }
+    # Captures: M, Cx0, Cya, B2, B4, Omxmax, Aldop, Cymax
     aero_row_pattern = re.compile(
-        r"(\{\s*"
-        r"([\d.]+)\s*,\s*"  # M (index 0)
-        r")([\d.]+)(\s*,\s*"  # Cx0 (index 1) - scale this
-        r"[\d.]+\s*,\s*"  # Cya (index 2)
-        r")([\d.]+)(\s*,\s*"  # B2 (index 3) - scale this
-        r")([\d.]+)(\s*,\s*"  # B4 (index 4) - scale this
-        r"[\d.]+\s*,\s*"  # Omxmax (index 5)
-        r"[\d.]+\s*,\s*"  # Aldop (index 6)
-        r"[\d.]+\s*\})"  # Cymax (index 7)
+        r"(\{\s*)"
+        r"([\d.]+)(\s*,\s*)"  # M (group 2)
+        r"([\d.]+)(\s*,\s*)"  # Cx0 (group 4) - scale this
+        r"([\d.]+)(\s*,\s*)"  # Cya (group 6)
+        r"([\d.]+)(\s*,\s*)"  # B2 (group 8) - scale this
+        r"([\d.]+)(\s*,\s*)"  # B4 (group 10) - scale this
+        r"([\d.]+)(\s*,\s*)"  # Omxmax (group 12)
+        r"([\d.]+)(\s*,\s*)"  # Aldop (group 14)
+        r"([\d.]+)(\s*\})"    # Cymax (group 16) - scale this at low Mach
     )
 
     # Find the aerodynamics.table_data section
@@ -150,19 +161,46 @@ def scale_aero_table_data(lua_content: str, scales: Scales) -> str:
     aero_section = lua_content[search_start:table_data_end]
 
     def replace_aero_row(match: re.Match) -> str:
-        prefix = match.group(1)  # { M,
-        cx0 = float(match.group(3))
-        mid1 = match.group(4)  # , Cya,
-        b2 = float(match.group(5))
-        mid2 = match.group(6)  # ,
-        b4 = float(match.group(7))
-        suffix = match.group(8)  # , Omxmax, Aldop, Cymax }
+        brace_open = match.group(1)   # {
+        mach = float(match.group(2))  # M
+        sep1 = match.group(3)         # ,
+        cx0 = float(match.group(4))   # Cx0
+        sep2 = match.group(5)         # ,
+        cya = match.group(6)          # Cya (unchanged)
+        sep3 = match.group(7)         # ,
+        b2 = float(match.group(8))    # B2
+        sep4 = match.group(9)         # ,
+        b4 = float(match.group(10))   # B4
+        sep5 = match.group(11)        # ,
+        omxmax = match.group(12)      # Omxmax (unchanged)
+        sep6 = match.group(13)        # ,
+        aldop = match.group(14)       # Aldop (unchanged)
+        sep7 = match.group(15)        # ,
+        cymax = float(match.group(16))  # Cymax
+        brace_close = match.group(17)   # }
 
+        # Apply base scaling
         new_cx0 = cx0 * scales.cx0
         new_b2 = b2 * scales.polar
         new_b4 = b4 * scales.polar
+        new_cymax = cymax
 
-        return f"{prefix}{new_cx0:.4f}{mid1}{new_b2:.3f}{mid2}{new_b4:.3f}{suffix}"
+        # Apply high-AoA scaling at low Mach numbers
+        if mach < HIGH_AOA_MACH_THRESHOLD:
+            new_b2 *= scales.polar_high_aoa
+            new_b4 *= scales.polar_high_aoa
+            new_cymax *= scales.cymax_high_aoa
+
+        return (
+            f"{brace_open}{mach}{sep1}"
+            f"{new_cx0:.4f}{sep2}"
+            f"{cya}{sep3}"
+            f"{new_b2:.3f}{sep4}"
+            f"{new_b4:.3f}{sep5}"
+            f"{omxmax}{sep6}"
+            f"{aldop}{sep7}"
+            f"{new_cymax:.2f}{brace_close}"
+        )
 
     new_aero_section = aero_row_pattern.sub(replace_aero_row, aero_section)
     return lua_content[:search_start] + new_aero_section + lua_content[table_data_end:]
@@ -391,12 +429,15 @@ def build_variant(
         LOGGER.warning("entry.lua not found in variant: %s", variant_path)
 
     LOGGER.info(
-        "Applied scales to %s: cx0=%.2f, polar=%.2f, engine_drag=%.2f, pfor=%.2f",
+        "Applied scales to %s: cx0=%.2f, polar=%.2f, engine_drag=%.2f, pfor=%.2f, "
+        "polar_high_aoa=%.2f, cymax_high_aoa=%.2f",
         variant.short_name,
         variant.scales.cx0,
         variant.scales.polar,
         variant.scales.engine_drag,
         variant.scales.pfor,
+        variant.scales.polar_high_aoa,
+        variant.scales.cymax_high_aoa,
     )
 
     return variant_path

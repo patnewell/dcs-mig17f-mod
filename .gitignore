@@ -39,6 +39,7 @@ Thumbs.db
 
 # Generated FM variant mods (regenerate with build_mig17f_variants_from_json.py)
 fm_variants/mods/
+fm_variants/high_aoa_mods/
 
 # Test run data (logs, reports)
 test_runs/

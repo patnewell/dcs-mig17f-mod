@@ -208,6 +208,38 @@ Test results are saved to `test_runs/` (gitignored) with:
 - `fm_test_results.csv`: data for further analysis
 - `run_info.txt`: metadata about the run
 
+### Generating BFM (dogfight) test missions
+
+```bash
+# Generate BFM mission using high-AoA tuning profiles and flight model variants
+python -m tools.mig17_fm_tool generate-bfm-mission \
+  --bfm-config ai_scratch_area/high_aoa_tuning/flight_profiles.json \
+  --variant-json ai_scratch_area/high_aoa_tuning/flight_models.json
+
+# Generate to a custom output path
+python -m tools.mig17_fm_tool generate-bfm-mission \
+  --bfm-config ai_scratch_area/high_aoa_tuning/flight_profiles.json \
+  --variant-json ai_scratch_area/high_aoa_tuning/flight_models.json \
+  --outfile "C:/Users/<you>/Saved Games/DCS/Missions/MiG17F_HighAoA_BFM.miz"
+
+# Include only priority-1 (core) scenarios
+python -m tools.mig17_fm_tool generate-bfm-mission \
+  --bfm-config ai_scratch_area/high_aoa_tuning/flight_profiles.json \
+  --variant-json ai_scratch_area/high_aoa_tuning/flight_models.json \
+  --max-priority 1
+
+# Single-FM mode (no variants, just the base MiG-17F)
+python -m tools.mig17_fm_tool generate-bfm-mission \
+  --bfm-config ai_scratch_area/high_aoa_tuning/flight_profiles.json \
+  --type-name vwv_mig17f
+```
+
+The BFM mission generator creates dogfight scenarios between MiG-17F variants and opponent aircraft (F-4E by default). When `--variant-json` is provided, the mission includes test groups for each FM variant, allowing A/B comparison of flight model tuning in TacView.
+
+**Configuration files:**
+- `flight_profiles.json`: Defines engagement geometries, altitudes, speeds, and test scenarios
+- `flight_models.json`: Defines FM variants with high-AoA tuning parameters (polar drag, lift caps)
+
 ### Legacy Script Usage
 
 The individual scripts are still available for backward compatibility:

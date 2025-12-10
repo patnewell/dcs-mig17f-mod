@@ -2,7 +2,7 @@
 
 This script creates DCS missions with various BFM engagement scenarios
 to test the MiG-17F flight model at the edge of its performance envelope.
-It reads scenario configurations from bfm_mission_tests.json.
+It reads scenario configurations from a JSON file (e.g. flight_profiles.json).
 
 The mission uses TacView for telemetry capture - no embedded Lua logging
 since ACMI provides comprehensive flight data.
@@ -14,7 +14,7 @@ import json
 import logging
 import math
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -32,10 +32,7 @@ KTS_TO_MPS = 0.514444
 NM_TO_METERS = 1852.0
 DEG_TO_RAD = math.pi / 180.0
 
-# Spacing between test groups to prevent cross-engagement
-TEST_GROUP_SPACING_M = 20 * NM_TO_METERS  # 20 nm between groups
-
-# MiG-17F specifications
+# MiG-17F specifications (used as defaults for custom plane types)
 MIG17_FUEL_MAX_KG = 1140
 MIG17_FUEL_FRACTION_BFM = 0.50  # 50% fuel for BFM tests
 
@@ -52,7 +49,20 @@ class OpponentAircraft:
 
 @dataclass
 class EngagementGeometry:
-    """Configuration for an engagement starting geometry."""
+    """Configuration for an engagement starting geometry.
+
+    Semantics:
+
+    - initial_range_nm: distance between MiG and opponent.
+    - opponent_heading_deg: opponent's initial heading (0° = east, 90° = north).
+    - mig17_offset_deg: MiG's position around the opponent, relative to the
+      opponent's nose:
+        * 0   = in front of opponent (along its heading vector)
+        * 180 = behind opponent
+        * 90  = left beam
+        * 270 = right beam
+    - mig17_heading_deg: MiG's own heading at start (may differ from opponent).
+    """
 
     id: str
     name: str
@@ -111,19 +121,12 @@ class BFMConfig:
 
 
 def load_bfm_config(json_path: Path) -> BFMConfig:
-    """Load BFM test configuration from JSON file.
-
-    Args:
-        json_path: Path to bfm_mission_tests.json
-
-    Returns:
-        BFMConfig with all scenario definitions
-    """
+    """Load BFM test configuration from JSON file."""
     with json_path.open("r", encoding="utf-8") as f:
         data = json.load(f)
 
     # Parse opponent aircraft
-    opponents = {}
+    opponents: dict[str, OpponentAircraft] = {}
     for opp in data["opponent_aircraft"]:
         opponents[opp["id"]] = OpponentAircraft(
             id=opp["id"],
@@ -133,7 +136,7 @@ def load_bfm_config(json_path: Path) -> BFMConfig:
         )
 
     # Parse engagement geometries
-    geometries = {}
+    geometries: dict[str, EngagementGeometry] = {}
     for geom in data["engagement_geometries"]:
         geometries[geom["id"]] = EngagementGeometry(
             id=geom["id"],
@@ -147,7 +150,7 @@ def load_bfm_config(json_path: Path) -> BFMConfig:
         )
 
     # Parse altitude bands
-    altitudes = {}
+    altitudes: dict[str, AltitudeBand] = {}
     for alt in data["altitude_bands"]:
         altitudes[alt["id"]] = AltitudeBand(
             id=alt["id"],
@@ -156,7 +159,7 @@ def load_bfm_config(json_path: Path) -> BFMConfig:
         )
 
     # Parse initial speeds
-    speeds = {}
+    speeds: dict[str, InitialSpeed] = {}
     for spd in data["initial_speeds"]:
         speeds[spd["id"]] = InitialSpeed(
             id=spd["id"],
@@ -165,7 +168,7 @@ def load_bfm_config(json_path: Path) -> BFMConfig:
         )
 
     # Parse scenarios
-    scenarios = []
+    scenarios: list[BFMScenario] = []
     for scen in data["test_scenarios"]:
         scenarios.append(
             BFMScenario(
@@ -194,14 +197,7 @@ def load_bfm_config(json_path: Path) -> BFMConfig:
 
 
 def get_or_create_plane_type(type_name: str) -> planes.PlaneType:
-    """Register or retrieve a custom plane type for DCS.
-
-    Args:
-        type_name: DCS type name for the aircraft
-
-    Returns:
-        PlaneType class for the aircraft
-    """
+    """Register or retrieve a custom plane type for DCS."""
     existing = planes.plane_map.get(type_name)
     if existing:
         return existing
@@ -225,62 +221,48 @@ def calculate_engagement_positions(
 ) -> tuple[tuple[float, float, float, float], tuple[float, float, float, float]]:
     """Calculate starting positions for MiG-17 and opponent.
 
-    The engagement is centered at (center_x, center_y). Both aircraft
-    are positioned to converge toward the center based on the geometry.
+    We treat (center_x, center_y) as the **midpoint** of the initial
+    separation. The vector from opponent to MiG is defined by:
 
-    Args:
-        geometry: The engagement geometry configuration
-        base_altitude_ft: Base altitude for the engagement
-        center_x: X coordinate of engagement center
-        center_y: Y coordinate of engagement center
+        theta = opponent_heading_deg + mig17_offset_deg
 
-    Returns:
-        Tuple of ((mig17_x, mig17_y, mig17_alt_m, mig17_hdg),
-                  (opp_x, opp_y, opp_alt_m, opp_hdg))
+    where mig17_offset_deg is measured from the opponent's nose
+    (see EngagementGeometry docstring).
+
+    Positions:
+
+        opp = center - 0.5 * R
+        mig = center + 0.5 * R
+
+    where |R| = initial_range_nm.
     """
     range_m = geometry.initial_range_nm * NM_TO_METERS
-    half_range = range_m / 2.0
 
-    # Calculate positions relative to center
-    # MiG-17 offset determines its position relative to opponent
-    mig17_offset_rad = geometry.mig17_offset_deg * DEG_TO_RAD
+    # Direction from opponent to MiG, in math-style heading (0° = +X/east)
+    theta_rad = (geometry.opponent_heading_deg + geometry.mig17_offset_deg) * DEG_TO_RAD
+    dx = range_m * math.cos(theta_rad)
+    dy = range_m * math.sin(theta_rad)
 
-    # Opponent is at center + half_range in direction of its heading
-    opp_hdg_rad = geometry.opponent_heading_deg * DEG_TO_RAD
-    opp_x = center_x - half_range * math.cos(opp_hdg_rad)
-    opp_y = center_y - half_range * math.sin(opp_hdg_rad)
+    # Opponent and MiG positions are symmetric about the center
+    opp_x = center_x - dx / 2.0
+    opp_y = center_y - dy / 2.0
+    mig_x = center_x + dx / 2.0
+    mig_y = center_y + dy / 2.0
+
     opp_alt_m = base_altitude_ft * FT_TO_METERS
+    mig_alt_m = (base_altitude_ft + geometry.mig17_altitude_offset_ft) * FT_TO_METERS
 
-    # MiG-17 is positioned relative to opponent based on offset
-    # Offset 180 = behind opponent, offset 0 = in front
-    mig17_angle_from_opp = (geometry.opponent_heading_deg + 180 + geometry.mig17_offset_deg) * DEG_TO_RAD
-    mig17_x = opp_x + range_m * math.cos(mig17_angle_from_opp)
-    mig17_y = opp_y + range_m * math.sin(mig17_angle_from_opp)
-    mig17_alt_m = (base_altitude_ft + geometry.mig17_altitude_offset_ft) * FT_TO_METERS
-    mig17_hdg = geometry.mig17_heading_deg
-
-    # Adjust MiG-17 heading to point toward center/opponent if offensive
-    if geometry.mig17_offset_deg == 180:  # Behind opponent
-        # Point toward opponent's position
-        dx = opp_x - mig17_x
-        dy = opp_y - mig17_y
-        mig17_hdg = math.degrees(math.atan2(dy, dx))
+    mig_hdg = geometry.mig17_heading_deg
+    opp_hdg = geometry.opponent_heading_deg
 
     return (
-        (mig17_x, mig17_y, mig17_alt_m, mig17_hdg),
-        (opp_x, opp_y, opp_alt_m, geometry.opponent_heading_deg),
+        (mig_x, mig_y, mig_alt_m, mig_hdg),
+        (opp_x, opp_y, opp_alt_m, opp_hdg),
     )
 
 
 def load_variant_descriptors(json_path: Path) -> list[dict]:
-    """Load FM variant descriptors for multi-FM mode.
-
-    Args:
-        json_path: Path to mig17f_fm_variants.json
-
-    Returns:
-        List of variant descriptor dicts
-    """
+    """Load FM variant descriptors for multi-FM mode."""
     if not json_path.exists():
         return []
 
@@ -303,18 +285,7 @@ def build_bfm_mission(
     run_id: Optional[str] = None,
     max_priority: int = 3,
 ) -> tuple[mission.Mission, list[str], str]:
-    """Build the BFM test mission.
-
-    Args:
-        bfm_config: BFM test configuration
-        mig17_type_name: DCS type name for MiG-17 (single-FM mode)
-        variants: List of FM variant descriptors (multi-FM mode)
-        run_id: Unique run identifier (auto-generated if None)
-        max_priority: Maximum priority level of scenarios to include (1-3)
-
-    Returns:
-        Tuple of (mission, list of group names, run_id)
-    """
+    """Build the BFM test mission."""
     if run_id is None:
         run_id = uuid.uuid4().hex[:12]
 
@@ -354,12 +325,10 @@ def build_bfm_mission(
     else:
         mig17_types = [("", mig17_type_name)]
 
-    scenario_idx = 0
     for variant_idx, (variant_prefix, mig17_dcs_type) in enumerate(mig17_types):
         mig17_plane = get_or_create_plane_type(mig17_dcs_type)
 
-        for scen in active_scenarios:
-            # Get configuration components
+        for scen_idx, scen in enumerate(active_scenarios):
             opponent = bfm_config.opponents.get(scen.opponent)
             geometry = bfm_config.geometries.get(scen.geometry)
             altitude = bfm_config.altitudes.get(scen.altitude)
@@ -369,14 +338,13 @@ def build_bfm_mission(
                 LOGGER.warning("Incomplete scenario config for %s, skipping", scen.id)
                 continue
 
-            # Calculate center position for this test group
-            # Grid layout: variants along X, scenarios along Y
-            row = scenario_idx % 10
-            col = scenario_idx // 10 + variant_idx * 5
+            # Grid layout: variants along rows (Y/N-S), scenarios along columns (X/E-W)
+            row = variant_idx
+            col = scen_idx
             center_x = bfm_config.origin_x + col * spacing_m
             center_y = bfm_config.origin_y + row * spacing_m
 
-            # Calculate positions
+            # Calculate initial positions
             mig17_pos, opp_pos = calculate_engagement_positions(
                 geometry, altitude.altitude_ft, center_x, center_y
             )
@@ -388,7 +356,7 @@ def build_bfm_mission(
                 mig17_group_name = scen.id
             opp_group_name = f"{mig17_group_name}_OPP"
 
-            # Create MiG-17 group
+            # === MiG-17 group ===
             mig17_alt_m = mig17_pos[2]
             mig17_grp = miz.flight_group_inflight(
                 country=russia,
@@ -407,26 +375,29 @@ def build_bfm_mission(
             mig17_unit.heading = math.radians(mig17_pos[3])
             mig17_unit.fuel = int(MIG17_FUEL_MAX_KG * MIG17_FUEL_FRACTION_BFM)
 
-            # Set initial waypoint heading
-            start_point = mig17_grp.points[0]
-            start_point.speed = speed.speed_kt * KTS_TO_MPS
+            # Set initial waypoint speed
+            mig_start = mig17_grp.points[0]
+            mig_start.speed = speed.speed_kt * KTS_TO_MPS
 
-            # Add engage task - attack planes in range
-            mig17_grp.points[0].tasks.append(task.EngageTargets(
-                max_distance=10000,  # 10 km engagement range
-                targets=[Targets.All.Air.Planes],
-            ))
+            # Aggressive engage task – 20 km range, still < 30 nm grid spacing
+            mig_start.tasks.append(
+                task.EngageTargets(
+                    max_distance=20000,  # 20 km
+                    targets=[Targets.All.Air.Planes],
+                )
+            )
 
-            # Add waypoint toward center for engagement
-            wp_x = center_x + 10000 * math.cos(math.radians(mig17_pos[3]))
-            wp_y = center_y + 10000 * math.sin(math.radians(mig17_pos[3]))
+            # Waypoint: fly forward along current heading (preserve geometry)
+            mig_hdg_rad = math.radians(mig17_pos[3])
+            mig_wp_x = mig17_pos[0] + 10000 * math.cos(mig_hdg_rad)
+            mig_wp_y = mig17_pos[1] + 10000 * math.sin(mig_hdg_rad)
             mig17_grp.add_waypoint(
-                pos=mapping.Point(wp_x, wp_y, mig17_alt_m),
+                pos=mapping.Point(mig_wp_x, mig_wp_y, mig17_alt_m),
                 altitude=mig17_alt_m,
                 speed=speed.speed_kt * 1.852,
             )
 
-            # Create opponent group
+            # === Opponent group ===
             opp_plane = get_or_create_plane_type(opponent.dcs_type_name)
             opp_alt_m = opp_pos[2]
             opp_grp = miz.flight_group_inflight(
@@ -445,17 +416,18 @@ def build_bfm_mission(
             opp_unit = opp_grp.units[0]
             opp_unit.heading = math.radians(opp_pos[3])
 
-            # Set opponent engage behavior
             opp_start = opp_grp.points[0]
             opp_start.speed = speed.speed_kt * KTS_TO_MPS
-            opp_grp.points[0].tasks.append(task.EngageTargets(
-                max_distance=10000,
-                targets=[Targets.All.Air.Planes],
-            ))
+            opp_start.tasks.append(
+                task.EngageTargets(
+                    max_distance=20000,
+                    targets=[Targets.All.Air.Planes],
+                )
+            )
 
-            # Add opponent waypoint toward center
-            opp_wp_x = center_x + 10000 * math.cos(math.radians(opp_pos[3]))
-            opp_wp_y = center_y + 10000 * math.sin(math.radians(opp_pos[3]))
+            opp_hdg_rad = math.radians(opp_pos[3])
+            opp_wp_x = opp_pos[0] + 10000 * math.cos(opp_hdg_rad)
+            opp_wp_y = opp_pos[1] + 10000 * math.sin(opp_hdg_rad)
             opp_grp.add_waypoint(
                 pos=mapping.Point(opp_wp_x, opp_wp_y, opp_alt_m),
                 altitude=opp_alt_m,
@@ -464,7 +436,6 @@ def build_bfm_mission(
 
             groups.append(mig17_group_name)
             groups.append(opp_group_name)
-            scenario_idx += 1
 
     # Add mission start trigger with run ID marker
     marker_lua = f'''
@@ -491,7 +462,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--outfile",
-        default=Path.home() / "Saved Games" / "DCS" / "Missions" / "MiG17F_BFM_Test.miz",
+        default=Path.home()
+        / "Saved Games"
+        / "DCS"
+        / "Missions"
+        / "MiG17F_BFM_Test.miz",
         type=Path,
         help="Path to output .miz file",
     )
@@ -500,7 +475,7 @@ def parse_args() -> argparse.Namespace:
         dest="bfm_config",
         default=Path.cwd() / "bfm_mission_tests.json",
         type=Path,
-        help="Path to BFM test configuration JSON",
+        help="Path to BFM test configuration JSON (e.g. flight_profiles.json)",
     )
     parser.add_argument(
         "--variant-json",
@@ -582,7 +557,6 @@ def main() -> int:
     LOGGER.info("Run ID : %s", run_id)
     LOGGER.info("Groups : %d", len(groups))
 
-    # Print sample group names
     for name in groups[:10]:
         LOGGER.info("  - %s", name)
     if len(groups) > 10:

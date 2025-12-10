@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "aircraft": {
+    "id": "vwv_mig17f",
+    "base_mod_dir": "[VWV] MiG-17",
+    "base_display_name": "[VWV] MiG-17F \"Fresco C\"",
+    "description": "Baseline VWV MiG-17F SFM; variants are multiplicative perturbations around this."
+  },
+  "scaling_model": {
+    "cx0": "Multiply all Cx0 values in SFM_Data.aerodynamics.table_data by this factor.",
+    "polar": "Multiply all B2 and B4 values in SFM_Data.aerodynamics.table_data by this factor.",
+    "engine_drag": "Multiply SFM_Data.engine.dcx_eng by this factor.",
+    "pfor": "Multiply all Pfor values in SFM_Data.engine.table_data by this factor."
+  },
+  "variants": [
+    {
+      "variant_id": "RC1_BASE",
+      "short_name": "RC1",
+      "mod_dir_name": "[VWV] MiG-17_RC1_BASE",
+      "dcs_type_name": "vwv_mig17f_rc1",
+      "shape_username": "mig17f_rc1",
+      "display_name": "[VWV] MiG-17F RC1 Baseline (unmodified)",
+      "scales": {
+        "cx0": 1.0,
+        "polar": 1.0,
+        "engine_drag": 1.0,
+        "pfor": 1.0
+      },
+      "notes": "Direct copy of current SFM; used as control."
+    }
+  ]
+}

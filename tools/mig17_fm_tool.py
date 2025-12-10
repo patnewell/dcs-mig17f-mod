@@ -251,9 +251,12 @@ def cmd_run_test(args: argparse.Namespace) -> int:
     LOGGER.info("DCS installation: %s", dcs_paths.install_dir)
     LOGGER.info("DCS Saved Games: %s", dcs_paths.saved_games)
 
+    # Resolve variant JSON path if provided
+    variant_json = args.variant_json.resolve() if args.variant_json else None
+
     # Step 1: Build FM variants
     if not args.skip_build:
-        if not runner.run_build_variants(repo_root, dcs_paths):
+        if not runner.run_build_variants(repo_root, dcs_paths, variant_json):
             return 1
 
     # Step 2: Install base mod
@@ -261,7 +264,7 @@ def cmd_run_test(args: argparse.Namespace) -> int:
         return 1
 
     # Step 3: Generate mission
-    run_id = runner.generate_mission(repo_root, dcs_paths)
+    run_id = runner.generate_mission(repo_root, dcs_paths, variant_json)
     if not run_id:
         return 1
 
@@ -627,6 +630,12 @@ def add_run_test_parser(subparsers: argparse._SubParsersAction) -> None:
         type=int,
         default=runner.DEFAULT_TIMEOUT_S,
         help=f"Maximum time to wait for test completion (default: {runner.DEFAULT_TIMEOUT_S}s)",
+    )
+    parser_run.add_argument(
+        "--variant-json",
+        dest="variant_json",
+        type=Path,
+        help="Path to FM variants JSON file (default: ./fm_variants/mig17f_fm_variants.json)",
     )
     parser_run.add_argument(
         "--skip-build",

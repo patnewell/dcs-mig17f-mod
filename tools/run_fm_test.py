@@ -150,12 +150,17 @@ def find_repo_root() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
-def run_build_variants(repo_root: Path, dcs_paths: DCSPaths) -> bool:
+def run_build_variants(
+    repo_root: Path,
+    dcs_paths: DCSPaths,
+    variant_json: Optional[Path] = None,
+) -> bool:
     """Build FM variant mods and install to DCS.
 
     Args:
         repo_root: Repository root directory
         dcs_paths: DCS paths configuration
+        variant_json: Optional path to FM variants JSON file
 
     Returns:
         True if successful, False otherwise
@@ -176,6 +181,11 @@ def run_build_variants(repo_root: Path, dcs_paths: DCSPaths) -> bool:
         "--dcs-saved-games",
         str(dcs_paths.saved_games),
     ]
+
+    # Add custom variant JSON if specified
+    if variant_json:
+        cmd.extend(["--json-file", str(variant_json)])
+        LOGGER.info("Using custom variant JSON: %s", variant_json)
 
     LOGGER.info("Running: %s", " ".join(cmd))
     result = subprocess.run(cmd, capture_output=True, text=True, cwd=repo_root)
@@ -223,12 +233,17 @@ def install_base_mod(repo_root: Path, dcs_paths: DCSPaths) -> bool:
     return True
 
 
-def generate_mission(repo_root: Path, dcs_paths: DCSPaths) -> Optional[str]:
+def generate_mission(
+    repo_root: Path,
+    dcs_paths: DCSPaths,
+    variant_json: Optional[Path] = None,
+) -> Optional[str]:
     """Generate the test mission and return the run ID.
 
     Args:
         repo_root: Repository root directory
         dcs_paths: DCS paths configuration
+        variant_json: Optional path to FM variants JSON file
 
     Returns:
         Run ID string if successful, None otherwise
@@ -253,6 +268,11 @@ def generate_mission(repo_root: Path, dcs_paths: DCSPaths) -> Optional[str]:
         "--outfile",
         str(outfile),
     ]
+
+    # Add custom variant JSON if specified
+    if variant_json:
+        cmd.extend(["--variant-json", str(variant_json)])
+        LOGGER.info("Using custom variant JSON: %s", variant_json)
 
     LOGGER.info("Running: %s", " ".join(cmd))
     result = subprocess.run(cmd, capture_output=True, text=True, cwd=repo_root)

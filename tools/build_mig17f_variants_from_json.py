@@ -33,11 +33,18 @@ class Scales:
     polar: float
     engine_drag: float
     pfor: float
-    polar_high_aoa: float = 1.0  # Additional B2/B4 multiplier at low Mach (high-AoA regime)
+    polar_high_aoa: float = 1.0  # B4 multiplier at Mach 0.2-0.8 (high-AoA drag regime)
     cymax_high_aoa: float = 1.0  # Cymax multiplier at low Mach (limits max lift/G)
+    cymax: float = 1.0  # Global Cymax multiplier (all Mach numbers)
+    aldop: float = 1.0  # Aldop (departure AoA) multiplier
+    ny_max_abs: Optional[float] = None  # Absolute Ny_max/Ny_max_e value (not a scale)
+    flaps_maneuver_scale: float = 1.0  # flaps_maneuver multiplier
 
-# Mach threshold below which high-AoA scaling is applied
-HIGH_AOA_MACH_THRESHOLD = 0.5
+# Mach thresholds for high-AoA scaling (polar_high_aoa applies for 0.2 <= M <= 0.8)
+HIGH_AOA_MACH_MIN = 0.2
+HIGH_AOA_MACH_MAX = 0.8
+# Legacy threshold for cymax_high_aoa (M < 0.5)
+CYMAX_HIGH_AOA_MACH_THRESHOLD = 0.5
 
 
 @dataclass(frozen=True)
@@ -82,6 +89,10 @@ def load_variant_config(json_path: Path) -> VariantConfig:
             pfor=v["scales"]["pfor"],
             polar_high_aoa=v["scales"].get("polar_high_aoa", 1.0),
             cymax_high_aoa=v["scales"].get("cymax_high_aoa", 1.0),
+            cymax=v["scales"].get("cymax", 1.0),
+            aldop=v["scales"].get("aldop", 1.0),
+            ny_max_abs=v["scales"].get("ny_max_abs"),
+            flaps_maneuver_scale=v["scales"].get("flaps_maneuver_scale", 1.0),
         )
         variants.append(
             Variant(
@@ -112,8 +123,10 @@ def scale_aero_table_data(lua_content: str, scales: Scales) -> str:
     Each row in table_data is: { M, Cx0, Cya, B2, B4, Omxmax, Aldop, Cymax }
     We multiply:
     - Cx0 by scales.cx0
-    - B2 and B4 by scales.polar (and additionally by scales.polar_high_aoa at low Mach)
-    - Cymax by scales.cymax_high_aoa at low Mach (to limit max lift/G in high-AoA regime)
+    - B2 by scales.polar
+    - B4 by scales.polar (and additionally by scales.polar_high_aoa at Mach 0.2-0.8)
+    - Aldop by scales.aldop
+    - Cymax by scales.cymax (and additionally by scales.cymax_high_aoa at low Mach)
     """
     # Pattern to match table rows in aerodynamics.table_data
     # Example: { 0.0,  0.0162, 0.0715, 0.072, 0.010, 3.0, 30.0, 1.4 }
@@ -174,7 +187,7 @@ def scale_aero_table_data(lua_content: str, scales: Scales) -> str:
         sep5 = match.group(11)        # ,
         omxmax = match.group(12)      # Omxmax (unchanged)
         sep6 = match.group(13)        # ,
-        aldop = match.group(14)       # Aldop (unchanged)
+        aldop = float(match.group(14))  # Aldop
         sep7 = match.group(15)        # ,
         cymax = float(match.group(16))  # Cymax
         brace_close = match.group(17)   # }
@@ -183,12 +196,15 @@ def scale_aero_table_data(lua_content: str, scales: Scales) -> str:
         new_cx0 = cx0 * scales.cx0
         new_b2 = b2 * scales.polar
         new_b4 = b4 * scales.polar
-        new_cymax = cymax
+        new_aldop = aldop * scales.aldop
+        new_cymax = cymax * scales.cymax
 
-        # Apply high-AoA scaling at low Mach numbers
-        if mach < HIGH_AOA_MACH_THRESHOLD:
-            new_b2 *= scales.polar_high_aoa
+        # Apply polar_high_aoa to B4 only at Mach 0.2-0.8
+        if HIGH_AOA_MACH_MIN <= mach <= HIGH_AOA_MACH_MAX:
             new_b4 *= scales.polar_high_aoa
+
+        # Apply cymax_high_aoa at low Mach (legacy behavior)
+        if mach < CYMAX_HIGH_AOA_MACH_THRESHOLD:
             new_cymax *= scales.cymax_high_aoa
 
         return (
@@ -198,7 +214,7 @@ def scale_aero_table_data(lua_content: str, scales: Scales) -> str:
             f"{new_b2:.3f}{sep4}"
             f"{new_b4:.3f}{sep5}"
             f"{omxmax}{sep6}"
-            f"{aldop}{sep7}"
+            f"{new_aldop:.1f}{sep7}"
             f"{new_cymax:.2f}{brace_close}"
         )
 
@@ -279,6 +295,50 @@ def scale_engine_pfor(lua_content: str, scales: Scales) -> str:
 
     new_engine_section = engine_row_pattern.sub(replace_pfor, engine_section)
     return lua_content[:table_start] + new_engine_section + lua_content[engine_table_end:]
+
+
+def patch_ny_max(lua_content: str, scales: Scales) -> str:
+    """Patch Ny_max and Ny_max_e to absolute values if ny_max_abs is set.
+
+    These are top-level aircraft properties that control max G for AI.
+    """
+    if scales.ny_max_abs is None:
+        return lua_content
+
+    ny_max_value = scales.ny_max_abs
+
+    # Patch Ny_max = X
+    ny_max_pattern = re.compile(r"(Ny_max\s*=\s*)([\d.]+)")
+    lua_content = ny_max_pattern.sub(
+        rf"\g<1>{ny_max_value}", lua_content, count=1
+    )
+
+    # Patch Ny_max_e = X
+    ny_max_e_pattern = re.compile(r"(Ny_max_e\s*=\s*)([\d.]+)")
+    lua_content = ny_max_e_pattern.sub(
+        rf"\g<1>{ny_max_value}", lua_content, count=1
+    )
+
+    return lua_content
+
+
+def scale_flaps_maneuver(lua_content: str, scales: Scales) -> str:
+    """Scale the flaps_maneuver value by flaps_maneuver_scale.
+
+    flaps_maneuver controls AI maneuver-flap authority.
+    """
+    if scales.flaps_maneuver_scale == 1.0:
+        return lua_content
+
+    pattern = re.compile(r"(flaps_maneuver\s*=\s*)([\d.]+)")
+
+    def replace_flaps_maneuver(match: re.Match) -> str:
+        prefix = match.group(1)
+        value = float(match.group(2))
+        new_value = value * scales.flaps_maneuver_scale
+        return f"{prefix}{new_value:.2f}"
+
+    return pattern.sub(replace_flaps_maneuver, lua_content, count=1)
 
 
 def patch_entry_lua(entry_content: str, variant: Variant) -> str:
@@ -379,6 +439,10 @@ def apply_variant_modifications(lua_content: str, variant: Variant) -> str:
     lua_content = scale_engine_dcx_eng(lua_content, variant.scales)
     lua_content = scale_engine_pfor(lua_content, variant.scales)
 
+    # Apply top-level property overrides
+    lua_content = patch_ny_max(lua_content, variant.scales)
+    lua_content = scale_flaps_maneuver(lua_content, variant.scales)
+
     return lua_content
 
 
@@ -430,14 +494,18 @@ def build_variant(
 
     LOGGER.info(
         "Applied scales to %s: cx0=%.2f, polar=%.2f, engine_drag=%.2f, pfor=%.2f, "
-        "polar_high_aoa=%.2f, cymax_high_aoa=%.2f",
+        "polar_high_aoa=%.2f, cymax=%.2f, aldop=%.2f, ny_max_abs=%s, "
+        "flaps_maneuver_scale=%.2f",
         variant.short_name,
         variant.scales.cx0,
         variant.scales.polar,
         variant.scales.engine_drag,
         variant.scales.pfor,
         variant.scales.polar_high_aoa,
-        variant.scales.cymax_high_aoa,
+        variant.scales.cymax,
+        variant.scales.aldop,
+        variant.scales.ny_max_abs,
+        variant.scales.flaps_maneuver_scale,
     )
 
     return variant_path

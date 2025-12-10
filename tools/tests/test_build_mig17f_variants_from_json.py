@@ -524,5 +524,167 @@ class TestInstallToSavedGames(unittest.TestCase):
             self.assertFalse((installed / "old.txt").exists())
 
 
+class TestScaleNewAttributes(unittest.TestCase):
+    """Tests for new scaling attributes: cymax, aldop, polar_high_aoa, ny_max_abs, flaps_maneuver_scale."""
+
+    def test_cymax_scales_all_rows(self) -> None:
+        """Cymax is scaled in all rows regardless of Mach."""
+        lua_content = """
+aerodynamics = {
+    table_data = {
+        { 0.0,  0.0200, 0.0715, 0.100, 0.010, 1.0, 15.0, 1.20},
+        { 0.5,  0.0200, 0.0715, 0.100, 0.010, 1.0, 15.0, 1.20},
+        { 0.9,  0.0200, 0.0715, 0.100, 0.010, 1.0, 15.0, 1.20},
+    }, -- end of table_data
+}, -- end of aerodynamics
+engine = {}
+"""
+        scales = builder.Scales(cx0=1.0, polar=1.0, engine_drag=1.0, pfor=1.0, cymax=0.8)
+        result = builder.scale_aero_table_data(lua_content, scales)
+        # Cymax 1.20 * 0.8 = 0.96
+        self.assertEqual(result.count("0.96"), 3)
+
+    def test_aldop_scales_all_rows(self) -> None:
+        """Aldop is scaled in all rows."""
+        lua_content = """
+aerodynamics = {
+    table_data = {
+        { 0.0,  0.0200, 0.0715, 0.100, 0.010, 1.0, 20.0, 1.20},
+        { 0.5,  0.0200, 0.0715, 0.100, 0.010, 1.0, 20.0, 1.20},
+    }, -- end of table_data
+}, -- end of aerodynamics
+engine = {}
+"""
+        scales = builder.Scales(cx0=1.0, polar=1.0, engine_drag=1.0, pfor=1.0, aldop=0.9)
+        result = builder.scale_aero_table_data(lua_content, scales)
+        # Aldop 20.0 * 0.9 = 18.0
+        self.assertEqual(result.count("18.0"), 2)
+
+    def test_polar_high_aoa_only_b4_in_range(self) -> None:
+        """polar_high_aoa only affects B4 (not B2) and only for Mach 0.2-0.8."""
+        lua_content = """
+aerodynamics = {
+    table_data = {
+        { 0.1,  0.0200, 0.0715, 0.100, 0.010, 1.0, 15.0, 1.20},
+        { 0.5,  0.0200, 0.0715, 0.100, 0.010, 1.0, 15.0, 1.20},
+        { 0.9,  0.0200, 0.0715, 0.100, 0.010, 1.0, 15.0, 1.20},
+    }, -- end of table_data
+}, -- end of aerodynamics
+engine = {}
+"""
+        scales = builder.Scales(cx0=1.0, polar=1.0, engine_drag=1.0, pfor=1.0, polar_high_aoa=2.0)
+        result = builder.scale_aero_table_data(lua_content, scales)
+        # Mach 0.1: outside range, B4 stays 0.010
+        # Mach 0.5: in range, B4 = 0.010 * 2.0 = 0.020
+        # Mach 0.9: outside range, B4 stays 0.010
+        self.assertIn("0.020", result)  # Mach 0.5 B4 scaled
+        self.assertEqual(result.count("0.010"), 2)  # M=0.1 and M=0.9 unchanged
+        # B2 should always be 0.100 (unaffected by polar_high_aoa)
+        self.assertEqual(result.count("0.100"), 3)
+
+    def test_polar_high_aoa_boundary_conditions(self) -> None:
+        """polar_high_aoa applies at boundaries (0.2 and 0.8 inclusive)."""
+        lua_content = """
+aerodynamics = {
+    table_data = {
+        { 0.2,  0.0200, 0.0715, 0.100, 0.010, 1.0, 15.0, 1.20},
+        { 0.8,  0.0200, 0.0715, 0.100, 0.010, 1.0, 15.0, 1.20},
+    }, -- end of table_data
+}, -- end of aerodynamics
+engine = {}
+"""
+        scales = builder.Scales(cx0=1.0, polar=1.0, engine_drag=1.0, pfor=1.0, polar_high_aoa=1.5)
+        result = builder.scale_aero_table_data(lua_content, scales)
+        # Both rows should have B4 scaled: 0.010 * 1.5 = 0.015
+        self.assertEqual(result.count("0.015"), 2)
+
+
+class TestPatchNyMax(unittest.TestCase):
+    """Tests for patch_ny_max function."""
+
+    def test_patches_both_ny_max_fields(self) -> None:
+        """Both Ny_max and Ny_max_e are set to absolute value."""
+        lua_content = """
+Ny_min = -3,
+Ny_max = 8,
+V_max_sea_level = 1115,
+Ny_max_e = 8,
+"""
+        scales = builder.Scales(
+            cx0=1.0, polar=1.0, engine_drag=1.0, pfor=1.0, ny_max_abs=6.5
+        )
+        result = builder.patch_ny_max(lua_content, scales)
+        self.assertIn("Ny_max = 6.5", result)
+        self.assertIn("Ny_max_e = 6.5", result)
+
+    def test_no_change_when_none(self) -> None:
+        """Content unchanged when ny_max_abs is None."""
+        lua_content = """
+Ny_max = 8,
+Ny_max_e = 8,
+"""
+        scales = builder.Scales(cx0=1.0, polar=1.0, engine_drag=1.0, pfor=1.0)
+        result = builder.patch_ny_max(lua_content, scales)
+        self.assertEqual(lua_content, result)
+
+
+class TestScaleFlapsManeuver(unittest.TestCase):
+    """Tests for scale_flaps_maneuver function."""
+
+    def test_scales_flaps_maneuver(self) -> None:
+        """flaps_maneuver value is scaled correctly."""
+        lua_content = """
+thrust_sum_ab = 3380,
+flaps_maneuver = 0.5,
+Mach_max = 0.95,
+"""
+        scales = builder.Scales(
+            cx0=1.0, polar=1.0, engine_drag=1.0, pfor=1.0, flaps_maneuver_scale=0.7
+        )
+        result = builder.scale_flaps_maneuver(lua_content, scales)
+        # 0.5 * 0.7 = 0.35
+        self.assertIn("flaps_maneuver = 0.35", result)
+
+    def test_no_change_when_scale_is_1(self) -> None:
+        """Content unchanged when flaps_maneuver_scale is 1.0."""
+        lua_content = """
+flaps_maneuver = 0.5,
+"""
+        scales = builder.Scales(
+            cx0=1.0, polar=1.0, engine_drag=1.0, pfor=1.0, flaps_maneuver_scale=1.0
+        )
+        result = builder.scale_flaps_maneuver(lua_content, scales)
+        self.assertEqual(lua_content, result)
+
+
+class TestScalesNewFields(unittest.TestCase):
+    """Tests for new Scales dataclass fields."""
+
+    def test_new_fields_have_defaults(self) -> None:
+        """New fields have appropriate defaults."""
+        scales = builder.Scales(cx0=1.0, polar=1.0, engine_drag=1.0, pfor=1.0)
+        self.assertEqual(1.0, scales.cymax)
+        self.assertEqual(1.0, scales.aldop)
+        self.assertIsNone(scales.ny_max_abs)
+        self.assertEqual(1.0, scales.flaps_maneuver_scale)
+
+    def test_new_fields_can_be_set(self) -> None:
+        """New fields can be set to custom values."""
+        scales = builder.Scales(
+            cx0=1.0,
+            polar=1.0,
+            engine_drag=1.0,
+            pfor=1.0,
+            cymax=0.85,
+            aldop=0.9,
+            ny_max_abs=7.5,
+            flaps_maneuver_scale=0.7,
+        )
+        self.assertEqual(0.85, scales.cymax)
+        self.assertEqual(0.9, scales.aldop)
+        self.assertEqual(7.5, scales.ny_max_abs)
+        self.assertEqual(0.7, scales.flaps_maneuver_scale)
+
+
 if __name__ == "__main__":
     unittest.main()

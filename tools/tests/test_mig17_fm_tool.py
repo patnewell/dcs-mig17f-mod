@@ -171,6 +171,105 @@ class TestRunTestCommand(unittest.TestCase):
         self.assertEqual(1200, args.timeout)
 
 
+class TestPromoteVariantCommand(unittest.TestCase):
+    """Tests for promote-variant subcommand."""
+
+    def test_required_arguments(self) -> None:
+        """Variant ID and version are required."""
+        parser = tool.create_parser()
+        args = parser.parse_args([
+            "promote-variant", "TEST_VARIANT",
+            "--version", "RC2",
+            "--config-dir", "/tmp/config",
+        ])
+
+        self.assertEqual("TEST_VARIANT", args.variant_id)
+        self.assertEqual("RC2", args.version)
+        self.assertEqual(Path("/tmp/config"), args.config_dir)
+
+    def test_variant_json_argument(self) -> None:
+        """Variant JSON argument is parsed correctly."""
+        parser = tool.create_parser()
+        args = parser.parse_args([
+            "promote-variant", "MY_VARIANT",
+            "--version", "RC3",
+            "--variant-json", "/tmp/flight_models.json",
+        ])
+
+        self.assertEqual("MY_VARIANT", args.variant_id)
+        self.assertEqual("RC3", args.version)
+        self.assertEqual(Path("/tmp/flight_models.json"), args.variant_json)
+
+
+class TestQuickBfmSetupCommand(unittest.TestCase):
+    """Tests for quick-bfm-setup subcommand."""
+
+    def test_default_arguments(self) -> None:
+        """Default arguments are set correctly."""
+        parser = tool.create_parser()
+        args = parser.parse_args(["quick-bfm-setup"])
+
+        self.assertIsNone(args.config_dir)
+        self.assertIsNone(args.variant_json)
+        self.assertIsNone(args.bfm_config)
+        self.assertIsNone(args.dcs_path)
+        self.assertIsNone(args.saved_games)
+        self.assertEqual(3, args.max_priority)
+
+    def test_config_dir_argument(self) -> None:
+        """Config directory argument is parsed correctly."""
+        parser = tool.create_parser()
+        args = parser.parse_args([
+            "quick-bfm-setup",
+            "--config-dir", "/tmp/stage4_tuning",
+        ])
+
+        self.assertEqual(Path("/tmp/stage4_tuning"), args.config_dir)
+
+    def test_variant_json_argument(self) -> None:
+        """Variant JSON argument is parsed correctly."""
+        parser = tool.create_parser()
+        args = parser.parse_args([
+            "quick-bfm-setup",
+            "--variant-json", "/tmp/test_variants.json",
+        ])
+
+        self.assertEqual(Path("/tmp/test_variants.json"), args.variant_json)
+
+    def test_bfm_config_argument(self) -> None:
+        """BFM config argument is parsed correctly."""
+        parser = tool.create_parser()
+        args = parser.parse_args([
+            "quick-bfm-setup",
+            "--bfm-config", "/tmp/test_scenarios.json",
+        ])
+
+        self.assertEqual(Path("/tmp/test_scenarios.json"), args.bfm_config)
+
+    def test_max_priority_argument(self) -> None:
+        """Max priority argument is parsed correctly."""
+        parser = tool.create_parser()
+        args = parser.parse_args([
+            "quick-bfm-setup",
+            "--max-priority", "1",
+        ])
+
+        self.assertEqual(1, args.max_priority)
+
+    def test_saved_games_argument(self) -> None:
+        """Saved games argument is parsed correctly."""
+        parser = tool.create_parser()
+        args = parser.parse_args([
+            "quick-bfm-setup",
+            "--saved-games", "/c/Users/test/Saved Games/DCS",
+        ])
+
+        self.assertEqual(
+            Path("/c/Users/test/Saved Games/DCS"),
+            args.saved_games,
+        )
+
+
 class TestCLIIntegration(unittest.TestCase):
     """Integration tests for CLI execution."""
 
@@ -189,6 +288,8 @@ class TestCLIIntegration(unittest.TestCase):
         self.assertIn("parse-log", result.stdout)
         self.assertIn("build-variants", result.stdout)
         self.assertIn("run-test", result.stdout)
+        self.assertIn("quick-bfm-setup", result.stdout)
+        self.assertIn("promote-variant", result.stdout)
 
     def test_subcommand_help(self) -> None:
         """Subcommand help displays correctly."""
@@ -332,6 +433,291 @@ class TestCLIIntegration(unittest.TestCase):
 
             self.assertEqual(0, result.returncode, result.stderr)
             self.assertTrue((variants_root / "[VWV] MiG-17_TEST").exists())
+
+    def test_quick_bfm_setup_help(self) -> None:
+        """quick-bfm-setup help displays correctly."""
+        result = subprocess.run(
+            [sys.executable, "-m", "tools.mig17_fm_tool", "quick-bfm-setup", "--help"],
+            capture_output=True,
+            text=True,
+            cwd=str(ROOT),
+        )
+
+        self.assertEqual(0, result.returncode)
+        self.assertIn("usage:", result.stdout)
+        self.assertIn("--variant-json", result.stdout)
+        self.assertIn("--bfm-config", result.stdout)
+
+    def test_quick_bfm_setup_missing_variant_json(self) -> None:
+        """quick-bfm-setup fails gracefully with missing variant JSON."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            nonexistent_json = Path(tmpdir) / "nonexistent.json"
+            saved_games = Path(tmpdir) / "SavedGames" / "DCS"
+            saved_games.mkdir(parents=True)
+
+            result = subprocess.run(
+                [
+                    sys.executable, "-m", "tools.mig17_fm_tool",
+                    "quick-bfm-setup",
+                    "--variant-json", str(nonexistent_json),
+                    "--saved-games", str(saved_games),
+                ],
+                capture_output=True,
+                text=True,
+                cwd=str(ROOT),
+            )
+
+            self.assertEqual(1, result.returncode)
+            self.assertIn("not found", result.stderr)
+
+    def test_quick_bfm_setup_missing_bfm_config(self) -> None:
+        """quick-bfm-setup fails gracefully with missing BFM config."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create minimal variant JSON
+            variant_config = {
+                "version": 1,
+                "aircraft": {
+                    "id": "vwv_mig17f",
+                    "base_mod_dir": "[VWV] MiG-17",
+                    "base_display_name": "[VWV] MiG-17F",
+                },
+                "variants": [
+                    {
+                        "variant_id": "TEST",
+                        "short_name": "TST",
+                        "mod_dir_name": "[VWV] MiG-17_TEST",
+                        "dcs_type_name": "vwv_mig17f_test",
+                        "shape_username": "mig17f_test",
+                        "display_name": "[VWV] MiG-17F TEST",
+                        "scales": {"cx0": 1.0, "polar": 1.0, "engine_drag": 1.0, "pfor": 1.0},
+                    }
+                ],
+            }
+            variant_json = Path(tmpdir) / "variants.json"
+            variant_json.write_text(json.dumps(variant_config))
+
+            nonexistent_bfm = Path(tmpdir) / "nonexistent_bfm.json"
+            saved_games = Path(tmpdir) / "SavedGames" / "DCS"
+            saved_games.mkdir(parents=True)
+
+            result = subprocess.run(
+                [
+                    sys.executable, "-m", "tools.mig17_fm_tool",
+                    "quick-bfm-setup",
+                    "--variant-json", str(variant_json),
+                    "--bfm-config", str(nonexistent_bfm),
+                    "--saved-games", str(saved_games),
+                ],
+                capture_output=True,
+                text=True,
+                cwd=str(ROOT),
+            )
+
+            self.assertEqual(1, result.returncode)
+            self.assertIn("not found", result.stderr)
+
+    def test_quick_bfm_setup_e2e(self) -> None:
+        """End-to-end test for quick-bfm-setup command."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+
+            # Create minimal variant JSON
+            variant_config = {
+                "version": 1,
+                "aircraft": {
+                    "id": "vwv_mig17f",
+                    "base_mod_dir": "[VWV] MiG-17",
+                    "base_display_name": "[VWV] MiG-17F",
+                },
+                "variants": [
+                    {
+                        "variant_id": "E2E_TEST",
+                        "short_name": "E2E",
+                        "mod_dir_name": "[VWV] MiG-17_E2E",
+                        "dcs_type_name": "vwv_mig17f_e2e",
+                        "shape_username": "mig17f_e2e",
+                        "display_name": "[VWV] MiG-17F E2E Test",
+                        "scales": {"cx0": 1.0, "polar": 1.0, "engine_drag": 1.0, "pfor": 1.0},
+                    }
+                ],
+            }
+            variant_json = tmpdir_path / "variants.json"
+            variant_json.write_text(json.dumps(variant_config))
+
+            # Create minimal BFM config
+            bfm_config = {
+                "version": 1,
+                "mission_settings": {
+                    "duration_seconds": 60,
+                    "test_group_spacing_nm": 20,
+                    "origin": {"x": -100000, "y": -300000},
+                },
+                "flight_envelope_targets": {},
+                "opponent_aircraft": [
+                    {
+                        "id": "f4e",
+                        "dcs_type_name": "F-4E-45MC",
+                        "display_name": "F-4E Phantom",
+                        "group_prefix": "F4E",
+                    }
+                ],
+                "engagement_geometries": [
+                    {
+                        "id": "head_on",
+                        "name": "Head-On",
+                        "description": "Head-on merge",
+                        "mig17_heading_deg": 0,
+                        "opponent_heading_deg": 180,
+                        "initial_range_nm": 4.0,
+                        "mig17_offset_deg": 0,
+                    }
+                ],
+                "altitude_bands": [
+                    {
+                        "id": "low",
+                        "name": "Low",
+                        "altitude_ft": 1000,
+                    }
+                ],
+                "initial_speeds": [
+                    {
+                        "id": "merge",
+                        "name": "Merge Speed",
+                        "speed_kt": 380,
+                    }
+                ],
+                "test_scenarios": [
+                    {
+                        "id": "BFM_E2E_TEST",
+                        "opponent": "f4e",
+                        "geometry": "head_on",
+                        "altitude": "low",
+                        "speed": "merge",
+                        "priority": 1,
+                    }
+                ],
+            }
+            bfm_json = tmpdir_path / "bfm_config.json"
+            bfm_json.write_text(json.dumps(bfm_config))
+
+            # Create mock DCS Saved Games structure
+            saved_games = tmpdir_path / "SavedGames" / "DCS"
+            saved_games.mkdir(parents=True)
+            (saved_games / "Mods" / "aircraft").mkdir(parents=True)
+            (saved_games / "Missions").mkdir(parents=True)
+
+            result = subprocess.run(
+                [
+                    sys.executable, "-m", "tools.mig17_fm_tool",
+                    "quick-bfm-setup",
+                    "--variant-json", str(variant_json),
+                    "--bfm-config", str(bfm_json),
+                    "--saved-games", str(saved_games),
+                ],
+                capture_output=True,
+                text=True,
+                cwd=str(ROOT),
+            )
+
+            self.assertEqual(0, result.returncode, result.stderr)
+
+            # Verify variant was installed
+            variant_dir = saved_games / "Mods" / "aircraft" / "[VWV] MiG-17_E2E"
+            self.assertTrue(variant_dir.exists(), f"Variant not installed: {variant_dir}")
+
+            # Verify Database/mig17f.lua was modified
+            lua_file = variant_dir / "Database" / "mig17f.lua"
+            self.assertTrue(lua_file.exists(), f"lua file not found: {lua_file}")
+            lua_content = lua_file.read_text()
+            self.assertIn("vwv_mig17f_e2e", lua_content)
+
+            # Verify base mod was installed
+            base_mod_dir = saved_games / "Mods" / "aircraft" / "[VWV] MiG-17"
+            self.assertTrue(base_mod_dir.exists(), f"Base mod not installed: {base_mod_dir}")
+
+            # Verify mission was created
+            mission_file = saved_games / "Missions" / "MiG17F_BFM_Test.miz"
+            self.assertTrue(mission_file.exists(), f"Mission not created: {mission_file}")
+
+            # Verify RUN_ID was output
+            self.assertIn("RUN_ID=", result.stdout)
+
+            # Verify summary was logged
+            self.assertIn("QUICK BFM SETUP COMPLETE", result.stderr)
+
+    def test_quick_bfm_setup_config_dir_e2e(self) -> None:
+        """End-to-end test for quick-bfm-setup with --config-dir.
+
+        The --config-dir option only looks for flight_models.json.
+        The BFM config defaults to tools/resources/flight_scenarios_f4e_merge.json.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+
+            # Create config directory with only flight_models.json
+            config_dir = tmpdir_path / "stage4_tuning"
+            config_dir.mkdir()
+
+            # Create flight_models.json (variant config)
+            variant_config = {
+                "version": 1,
+                "aircraft": {
+                    "id": "vwv_mig17f",
+                    "base_mod_dir": "[VWV] MiG-17",
+                    "base_display_name": "[VWV] MiG-17F",
+                },
+                "variants": [
+                    {
+                        "variant_id": "DIR_TEST",
+                        "short_name": "DIR",
+                        "mod_dir_name": "[VWV] MiG-17_DIR",
+                        "dcs_type_name": "vwv_mig17f_dir",
+                        "shape_username": "mig17f_dir",
+                        "display_name": "[VWV] MiG-17F Dir Test",
+                        "scales": {"cx0": 1.0, "polar": 1.0, "engine_drag": 1.0, "pfor": 1.0},
+                    }
+                ],
+            }
+            (config_dir / "flight_models.json").write_text(json.dumps(variant_config))
+
+            # No flight_profiles.json needed - uses default from tools/resources/
+
+            # Create mock DCS Saved Games structure
+            saved_games = tmpdir_path / "SavedGames" / "DCS"
+            saved_games.mkdir(parents=True)
+            (saved_games / "Mods" / "aircraft").mkdir(parents=True)
+            (saved_games / "Missions").mkdir(parents=True)
+
+            result = subprocess.run(
+                [
+                    sys.executable, "-m", "tools.mig17_fm_tool",
+                    "quick-bfm-setup",
+                    "--config-dir", str(config_dir),
+                    "--saved-games", str(saved_games),
+                ],
+                capture_output=True,
+                text=True,
+                cwd=str(ROOT),
+            )
+
+            self.assertEqual(0, result.returncode, result.stderr)
+
+            # Verify variant was installed
+            variant_dir = saved_games / "Mods" / "aircraft" / "[VWV] MiG-17_DIR"
+            self.assertTrue(variant_dir.exists(), f"Variant not installed: {variant_dir}")
+
+            # Verify Database/mig17f.lua was modified
+            lua_file = variant_dir / "Database" / "mig17f.lua"
+            self.assertTrue(lua_file.exists(), f"lua file not found: {lua_file}")
+            lua_content = lua_file.read_text()
+            self.assertIn("vwv_mig17f_dir", lua_content)
+
+            # Verify mission was created
+            mission_file = saved_games / "Missions" / "MiG17F_BFM_Test.miz"
+            self.assertTrue(mission_file.exists(), f"Mission not created: {mission_file}")
+
+            # Verify RUN_ID was output
+            self.assertIn("RUN_ID=", result.stdout)
 
 
 if __name__ == "__main__":

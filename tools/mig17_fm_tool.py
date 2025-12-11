@@ -16,6 +16,8 @@ Commands:
     generate-bfm-mission  Generate BFM (dogfight) test mission
     analyze-bfm           Analyze TacView ACMI file for BFM metrics
     run-bfm-test          Run complete BFM test workflow
+    quick-bfm-setup       Build variants & BFM mission, install to DCS (ready to fly)
+    promote-variant       Promote a variant to become the new baseline mod
 
 Examples:
     # Generate a test mission
@@ -38,11 +40,20 @@ Examples:
 
     # Run complete BFM test
     python tools/mig17_fm_tool.py run-bfm-test --max-priority 2
+
+    # Quick BFM setup (builds variants, generates mission, installs to DCS)
+    python tools/mig17_fm_tool.py quick-bfm-setup --variant-json fm_variants/mig17f_rc1.json
+
+    # Promote a variant to become the new baseline mod
+    python tools/mig17_fm_tool.py promote-variant RC1_1_G6_FLAPS05 --version RC2 \
+        --config-dir ai_scratch_area/stage5_tuning
 """
 from __future__ import annotations
 
 import argparse
 import logging
+import re
+import shutil
 import sys
 from pathlib import Path
 from typing import Optional, Sequence
@@ -785,6 +796,433 @@ def add_run_bfm_test_parser(subparsers: argparse._SubParsersAction) -> None:
     parser_bfm_run.set_defaults(func=cmd_run_bfm_test)
 
 
+def cmd_quick_bfm_setup(args: argparse.Namespace) -> int:
+    """Handle the quick-bfm-setup subcommand.
+
+    This command builds FM variants, generates a BFM mission, and installs
+    everything into DCS so the user only needs to launch DCS and fly the mission.
+    """
+    repo_root = runner.find_repo_root()
+    LOGGER.info("Repository root: %s", repo_root)
+
+    # Resolve variant JSON path from config-dir or explicit argument
+    variant_json: Optional[Path] = None
+
+    if args.config_dir:
+        config_dir = args.config_dir.resolve()
+        if not config_dir.exists():
+            LOGGER.error("Config directory not found: %s", config_dir)
+            return 1
+        if not config_dir.is_dir():
+            LOGGER.error("Config path is not a directory: %s", config_dir)
+            return 1
+
+        # Look for flight_models.json in the config directory
+        variant_json = config_dir / "flight_models.json"
+        LOGGER.info("Using config directory: %s", config_dir)
+
+    # Explicit --variant-json overrides --config-dir
+    if args.variant_json:
+        variant_json = args.variant_json.resolve()
+
+    # Fall back to default if nothing specified
+    if variant_json is None:
+        variant_json = Path("./fm_variants/mig17f_fm_variants.json").resolve()
+
+    # BFM config: use explicit argument or default to standard F-4E merge scenario
+    if args.bfm_config:
+        bfm_config_path = args.bfm_config.resolve()
+    else:
+        bfm_config_path = repo_root / "tools" / "resources" / "flight_scenarios_f4e_merge.json"
+
+    if not variant_json.exists():
+        LOGGER.error("Variant JSON not found: %s", variant_json)
+        return 1
+
+    if not bfm_config_path.exists():
+        LOGGER.error("BFM config not found: %s", bfm_config_path)
+        return 1
+
+    # Detect DCS paths
+    try:
+        dcs_paths = runner.DCSPaths.detect(args.dcs_path, args.saved_games)
+    except FileNotFoundError as e:
+        LOGGER.error(str(e))
+        return 1
+
+    LOGGER.info("DCS Saved Games: %s", dcs_paths.saved_games)
+    LOGGER.info("Variant JSON: %s", variant_json)
+    LOGGER.info("BFM config: %s", bfm_config_path)
+
+    # Step 1: Build and install FM variants
+    LOGGER.info("=" * 60)
+    LOGGER.info("Step 1: Building FM variant mods")
+    LOGGER.info("=" * 60)
+
+    json_config = builder.load_variant_config(variant_json)
+    LOGGER.info("Found %d variants to build", len(json_config.variants))
+
+    # Resolve base mod path
+    base_mod_path = repo_root / json_config.base_mod_dir
+    if not base_mod_path.exists():
+        LOGGER.error("Base mod not found: %s", base_mod_path)
+        return 1
+
+    # Build variants
+    variants_root = repo_root / "fm_variants" / "mods"
+    variants_root.mkdir(parents=True, exist_ok=True)
+
+    built_variants: list[Path] = []
+    for variant in json_config.variants:
+        LOGGER.info("Building variant: %s (%s)", variant.short_name, variant.variant_id)
+        variant_path = builder.build_variant(base_mod_path, variant, variants_root)
+        built_variants.append(variant_path)
+
+    # Install variants to DCS
+    LOGGER.info("Installing variants to DCS...")
+    for variant_path in built_variants:
+        builder.install_to_saved_games(variant_path, dcs_paths.saved_games)
+        LOGGER.info("  Installed: %s", variant_path.name)
+
+    # Step 2: Install base mod
+    LOGGER.info("=" * 60)
+    LOGGER.info("Step 2: Installing base MiG-17 mod")
+    LOGGER.info("=" * 60)
+
+    if not runner.install_base_mod(repo_root, dcs_paths):
+        return 1
+
+    # Step 3: Generate BFM mission
+    LOGGER.info("=" * 60)
+    LOGGER.info("Step 3: Generating BFM test mission")
+    LOGGER.info("=" * 60)
+
+    # Load BFM configuration
+    bfm_config = bfm_generator.load_bfm_config(bfm_config_path)
+    LOGGER.info("Loaded %d scenarios", len(bfm_config.scenarios))
+
+    # Load variant descriptors for multi-FM mode
+    variants = bfm_generator.load_variant_descriptors(variant_json)
+    LOGGER.info("Multi-FM mode: %d variants", len(variants))
+
+    # Build mission
+    try:
+        miz, groups, run_id = bfm_generator.build_bfm_mission(
+            bfm_config,
+            "multi_fm_mode",
+            variants,
+            max_priority=args.max_priority,
+        )
+    except Exception as exc:
+        LOGGER.exception("Failed to build mission: %s", exc)
+        return 2
+
+    # Save mission to DCS Missions folder
+    dcs_paths.missions_dir.mkdir(parents=True, exist_ok=True)
+    mission_path = dcs_paths.missions_dir / "MiG17F_BFM_Test.miz"
+
+    try:
+        miz.save(mission_path)
+    except Exception as exc:
+        LOGGER.exception("Failed to save mission: %s", exc)
+        return 3
+
+    LOGGER.info("Mission saved to: %s", mission_path)
+
+    # Summary
+    LOGGER.info("")
+    LOGGER.info("=" * 60)
+    LOGGER.info("QUICK BFM SETUP COMPLETE")
+    LOGGER.info("=" * 60)
+    LOGGER.info("Variants installed: %d", len(built_variants))
+    for path in built_variants:
+        LOGGER.info("  - %s", path.name)
+    LOGGER.info("Mission: %s", mission_path)
+    LOGGER.info("Run ID: %s", run_id)
+    LOGGER.info("Groups: %d", len(groups))
+    LOGGER.info("")
+    LOGGER.info("To run the test:")
+    LOGGER.info("  1. Launch DCS")
+    LOGGER.info("  2. Go to Mission Editor")
+    LOGGER.info("  3. Load: MiG17F_BFM_Test.miz")
+    LOGGER.info("  4. Click 'Fly' to start the mission")
+
+    print(f"RUN_ID={run_id}")
+    return 0
+
+
+def add_quick_bfm_setup_parser(subparsers: argparse._SubParsersAction) -> None:
+    """Add the quick-bfm-setup subcommand parser."""
+    parser_quick = subparsers.add_parser(
+        "quick-bfm-setup",
+        help="Build variants and BFM mission, install to DCS (ready to fly)",
+        description="Quick setup for BFM testing: builds FM variants from a JSON file, "
+        "generates a BFM test mission, and installs everything to DCS. "
+        "After running this command, just launch DCS and fly the mission.",
+    )
+    parser_quick.add_argument(
+        "--config-dir",
+        dest="config_dir",
+        type=Path,
+        help="Directory containing flight_models.json",
+    )
+    parser_quick.add_argument(
+        "--variant-json",
+        dest="variant_json",
+        type=Path,
+        help="Path to FM variants JSON file (overrides --config-dir)",
+    )
+    parser_quick.add_argument(
+        "--bfm-config",
+        dest="bfm_config",
+        type=Path,
+        help="Path to BFM scenarios JSON file (default: tools/resources/flight_scenarios_f4e_merge.json)",
+    )
+    parser_quick.add_argument(
+        "--dcs-path",
+        type=Path,
+        help="Path to DCS installation directory",
+    )
+    parser_quick.add_argument(
+        "--saved-games",
+        type=Path,
+        help="Path to DCS Saved Games directory",
+    )
+    parser_quick.add_argument(
+        "--max-priority",
+        dest="max_priority",
+        type=int,
+        default=3,
+        choices=[1, 2, 3],
+        help="Maximum scenario priority to include (1=core, 2=standard, 3=all)",
+    )
+    parser_quick.set_defaults(func=cmd_quick_bfm_setup)
+
+
+def cmd_promote_variant(args: argparse.Namespace) -> int:
+    """Handle the promote-variant subcommand.
+
+    This command promotes a variant to become the new baseline mod by:
+    1. Loading the variant definition from flight_models.json
+    2. Copying the clean orig_mod as the base (preserves all identity fields)
+    3. Applying ONLY the SFM coefficient scaling to mig17f.lua
+    4. Updating ONLY display names (NOT identity fields like self_ID, update_id, etc.)
+    5. Replacing the [VWV] MiG-17 directory with the promoted mod
+
+    CRITICAL: The baseline mod must maintain these identity fields unchanged:
+    - entry.lua: self_ID="tetet_mig17f", update_id="mig17f", LogBook.type="mig17f"
+    - mig17f.lua: Name='vwv_mig17f', Shape="mig17f", username='mig17f'
+
+    Only display fields can be modified:
+    - entry.lua: displayName, fileMenuName
+    - mig17f.lua: DisplayName
+    """
+    repo_root = runner.find_repo_root()
+    LOGGER.info("Repository root: %s", repo_root)
+
+    # Resolve variant JSON path
+    variant_json: Optional[Path] = None
+
+    if args.config_dir:
+        config_dir = args.config_dir.resolve()
+        if not config_dir.exists():
+            LOGGER.error("Config directory not found: %s", config_dir)
+            return 1
+        variant_json = config_dir / "flight_models.json"
+    elif args.variant_json:
+        variant_json = args.variant_json.resolve()
+    else:
+        LOGGER.error("Must specify either --config-dir or --variant-json")
+        return 1
+
+    if not variant_json.exists():
+        LOGGER.error("Variant JSON not found: %s", variant_json)
+        return 1
+
+    # Load variant configuration
+    LOGGER.info("Loading variant configuration from: %s", variant_json)
+    config = builder.load_variant_config(variant_json)
+
+    # Find the specified variant
+    source_variant: Optional[builder.Variant] = None
+    for v in config.variants:
+        if v.variant_id == args.variant_id:
+            source_variant = v
+            break
+
+    if source_variant is None:
+        LOGGER.error("Variant '%s' not found in %s", args.variant_id, variant_json)
+        LOGGER.error("Available variants: %s", [v.variant_id for v in config.variants])
+        return 1
+
+    LOGGER.info("Found variant: %s (%s)", source_variant.variant_id, source_variant.short_name)
+    LOGGER.info("  Scales: cx0=%.2f, polar=%.2f, pfor=%.2f",
+                source_variant.scales.cx0,
+                source_variant.scales.polar,
+                source_variant.scales.pfor)
+
+    # Use orig_mod as the clean reference source (not the potentially corrupted baseline)
+    orig_mod_path = repo_root / "orig_mod" / "[VWV] MiG-17"
+    if not orig_mod_path.exists():
+        LOGGER.error("Original mod not found: %s", orig_mod_path)
+        LOGGER.error("The orig_mod directory is required as the clean reference source")
+        return 1
+
+    # Determine the target mod path (the [VWV] MiG-17 directory to replace)
+    base_mod_path = repo_root / config.base_mod_dir
+    version_name = args.version
+    display_name = f"[VWV] MiG-17F ({version_name})"
+
+    # Build the new mod in a temporary location
+    temp_build_dir = repo_root / "fm_variants" / "promoted"
+    temp_build_dir.mkdir(parents=True, exist_ok=True)
+    promoted_path = temp_build_dir / "[VWV] MiG-17"
+
+    LOGGER.info("=" * 60)
+    LOGGER.info("Building promoted variant: %s", display_name)
+    LOGGER.info("=" * 60)
+
+    # Remove any existing promoted folder
+    if promoted_path.exists():
+        LOGGER.info("Removing existing promoted folder: %s", promoted_path)
+        shutil.rmtree(promoted_path)
+
+    # Step 1: Copy the clean orig_mod (preserves all original identity fields)
+    LOGGER.info("Copying clean original mod from: %s", orig_mod_path)
+    shutil.copytree(orig_mod_path, promoted_path)
+
+    # Step 2: Apply ONLY SFM coefficient scaling to mig17f.lua
+    lua_path = promoted_path / "Database" / "mig17f.lua"
+    if lua_path.exists():
+        lua_content = lua_path.read_text(encoding="utf-8")
+
+        # Apply SFM scaling functions (but NOT identity patching)
+        lua_content = builder.scale_aero_table_data(lua_content, source_variant.scales)
+        lua_content = builder.scale_engine_dcx_eng(lua_content, source_variant.scales)
+        lua_content = builder.scale_engine_pfor(lua_content, source_variant.scales)
+        lua_content = builder.patch_ny_max(lua_content, source_variant.scales)
+        lua_content = builder.scale_flaps_maneuver(lua_content, source_variant.scales)
+
+        # Update ONLY the DisplayName field (not Name, Shape, or username)
+        display_pattern = re.compile(
+            r"(DisplayName\s*=\s*_\(['\"])(.+?)(['\"])\)"
+        )
+        lua_content = display_pattern.sub(
+            rf'\g<1>{display_name} "Fresco C"\g<3>)', lua_content, count=1
+        )
+
+        lua_path.write_text(lua_content, encoding="utf-8")
+        LOGGER.info("Applied SFM scales and updated DisplayName in mig17f.lua")
+    else:
+        LOGGER.error("Database/mig17f.lua not found in: %s", promoted_path)
+        return 1
+
+    # Step 3: Update ONLY display fields in entry.lua (NOT identity fields)
+    entry_path = promoted_path / "entry.lua"
+    if entry_path.exists():
+        entry_content = entry_path.read_text(encoding="utf-8")
+
+        # Update displayName ONLY (shown in module manager)
+        entry_content = re.sub(
+            r'(displayName\s*=\s*_\(["\'])([^"\']+)(["\'])',
+            rf'\g<1>{display_name}\g<3>',
+            entry_content,
+        )
+
+        # Update fileMenuName ONLY (shown in file menus)
+        entry_content = re.sub(
+            r'(fileMenuName\s*=\s*_\(["\'])([^"\']+)(["\'])',
+            rf'\g<1>{version_name} MiG-17F\g<3>',
+            entry_content,
+        )
+
+        # NOTE: We intentionally do NOT modify:
+        # - self_ID: must remain "tetet_mig17f" for livery/payload references
+        # - update_id: must remain "mig17f" for update system
+        # - LogBook.type: must remain "mig17f" for pilot logbook
+
+        entry_path.write_text(entry_content, encoding="utf-8")
+        LOGGER.info("Updated display fields in entry.lua (identity fields preserved)")
+    else:
+        LOGGER.warning("entry.lua not found in: %s", promoted_path)
+
+    # Step 4: Replace the baseline mod directory
+    LOGGER.info("=" * 60)
+    LOGGER.info("Replacing baseline mod: %s", base_mod_path)
+    LOGGER.info("=" * 60)
+
+    # Remove the existing baseline mod completely
+    if base_mod_path.exists():
+        LOGGER.info("Removing existing baseline mod...")
+        shutil.rmtree(base_mod_path)
+
+    # Move the promoted variant to the baseline location
+    LOGGER.info("Installing promoted variant as new baseline...")
+    shutil.move(str(promoted_path), str(base_mod_path))
+
+    # Clean up temp directory if empty
+    if temp_build_dir.exists() and not any(temp_build_dir.iterdir()):
+        temp_build_dir.rmdir()
+
+    # Summary
+    LOGGER.info("")
+    LOGGER.info("=" * 60)
+    LOGGER.info("PROMOTE VARIANT COMPLETE")
+    LOGGER.info("=" * 60)
+    LOGGER.info("Source variant: %s", source_variant.variant_id)
+    LOGGER.info("New version: %s", version_name)
+    LOGGER.info("Display name: %s", display_name)
+    LOGGER.info("Installed to: %s", base_mod_path)
+    LOGGER.info("")
+    LOGGER.info("The baseline mod [VWV] MiG-17 has been updated with:")
+    LOGGER.info("  - SFM scales from %s", source_variant.variant_id)
+    LOGGER.info("  - Display name: %s", display_name)
+    LOGGER.info("")
+    LOGGER.info("Identity fields preserved (for liveries/payloads/logbook):")
+    LOGGER.info("  - self_ID = 'tetet_mig17f'")
+    LOGGER.info("  - update_id = 'mig17f'")
+    LOGGER.info("  - LogBook.type = 'mig17f'")
+    LOGGER.info("  - Name = 'vwv_mig17f'")
+    LOGGER.info("  - Shape = 'mig17f'")
+
+    return 0
+
+
+def add_promote_variant_parser(subparsers: argparse._SubParsersAction) -> None:
+    """Add the promote-variant subcommand parser."""
+    parser_promote = subparsers.add_parser(
+        "promote-variant",
+        help="Promote a variant to become the new baseline mod",
+        description="Promotes a tested variant to become the new baseline [VWV] MiG-17 mod. "
+        "This applies the variant's SFM scales to the baseline mod and updates all "
+        "identifiers to use the new version name.",
+    )
+    parser_promote.add_argument(
+        "variant_id",
+        type=str,
+        help="Variant ID to promote (e.g., RC1_1_G6_FLAPS05)",
+    )
+    parser_promote.add_argument(
+        "--version",
+        type=str,
+        required=True,
+        help="Version name for the new baseline (e.g., RC2)",
+    )
+    parser_promote.add_argument(
+        "--config-dir",
+        dest="config_dir",
+        type=Path,
+        help="Directory containing flight_models.json",
+    )
+    parser_promote.add_argument(
+        "--variant-json",
+        dest="variant_json",
+        type=Path,
+        help="Path to FM variants JSON file (alternative to --config-dir)",
+    )
+    parser_promote.set_defaults(func=cmd_promote_variant)
+
+
 def create_parser() -> argparse.ArgumentParser:
     """Create the main argument parser with subcommands."""
     main_parser = argparse.ArgumentParser(
@@ -812,6 +1250,8 @@ def create_parser() -> argparse.ArgumentParser:
     add_generate_bfm_mission_parser(subparsers)
     add_analyze_bfm_parser(subparsers)
     add_run_bfm_test_parser(subparsers)
+    add_quick_bfm_setup_parser(subparsers)
+    add_promote_variant_parser(subparsers)
 
     return main_parser
 
@@ -824,7 +1264,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     # Configure logging
     log_level = logging.DEBUG if args.verbose else logging.INFO
     log_format = "%(levelname)s: %(message)s"
-    if args.command == "run-test":
+    if args.command in ("run-test", "quick-bfm-setup"):
         log_format = "%(asctime)s %(levelname)s: %(message)s"
 
     logging.basicConfig(level=log_level, format=log_format, datefmt="%H:%M:%S")

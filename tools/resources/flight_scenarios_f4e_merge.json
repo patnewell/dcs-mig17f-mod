@@ -1,0 +1,84 @@
+{
+  "version": 1,
+  "description": "Single BFM head-on merge scenario: MiG-17F vs F-4E Phantom at 1000ft MSL",
+  "mission_settings": {
+    "duration_seconds": 300,
+    "test_group_spacing_nm": 50,
+    "origin": {
+      "x": -100000,
+      "y": -300000
+    }
+  },
+  "flight_envelope_targets": {
+    "description": "Performance targets for head-on merge scenario",
+    "notes": "Single scenario per variant for quick BFM testing"
+  },
+  "opponent_aircraft": [
+    {
+      "id": "f4e",
+      "dcs_type_name": "F-4E-45MC",
+      "display_name": "F-4E Phantom II (Heatblur)",
+      "group_prefix": "F4E",
+      "notes": "Heatblur F-4E module - guns only configuration, 50% fuel"
+    }
+  ],
+  "engagement_geometries": [
+    {
+      "id": "head_on_merge",
+      "name": "Head-On Merge",
+      "description": "Aircraft approach head-on and fly past each other to force a merge",
+      "mig17_heading_deg": 0,
+      "opponent_heading_deg": 180,
+      "initial_range_nm": 6.0,
+      "mig17_offset_deg": 0,
+      "notes": "Waypoints set to fly past each other, forcing a merge and turn fight"
+    }
+  ],
+  "altitude_bands": [
+    {
+      "id": "low_1000ft",
+      "name": "Low Altitude (1000ft MSL)",
+      "altitude_ft": 1000,
+      "notes": "Low altitude engagement - high air density, maximum thrust available"
+    }
+  ],
+  "initial_speeds": [
+    {
+      "id": "mig17_merge",
+      "name": "MiG-17 Merge Speed",
+      "speed_kt": 380,
+      "notes": "MiG-17F initial speed through merge"
+    },
+    {
+      "id": "f4e_merge",
+      "name": "F-4E Merge Speed",
+      "speed_kt": 450,
+      "notes": "F-4E initial speed through merge"
+    }
+  ],
+  "test_scenarios": [
+    {
+      "id": "BFM_F4E_MERGE_LOW",
+      "opponent": "f4e",
+      "geometry": "head_on_merge",
+      "altitude": "low_1000ft",
+      "speed": "mig17_merge",
+      "opponent_speed": "f4e_merge",
+      "priority": 1,
+      "notes": "Head-on merge at 1000ft MSL. MiG-17 at 380kt, F-4E at 450kt. Both with 50% fuel, guns only."
+    }
+  ],
+  "aircraft_configuration": {
+    "description": "Configuration notes for aircraft setup",
+    "mig17": {
+      "fuel_fraction": 0.50,
+      "loadout": "Guns only (no additional stores or pylons)",
+      "notes": "Standard MiG-17F with 50% internal fuel"
+    },
+    "f4e": {
+      "fuel_fraction": 0.50,
+      "loadout": "Guns only (no additional stores or pylons)",
+      "notes": "Clean F-4E with 50% internal fuel"
+    }
+  }
+}

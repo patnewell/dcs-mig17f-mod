@@ -84,6 +84,7 @@ The MiG-17 excelled in close-range dogfights where its superior maneuverability 
   - `build_mig17f_variants_from_json.py`: variant building module
   - `run_fm_test.py`: test orchestration module
   - `tests/`: comprehensive unit tests for all modules
+  - `resources/`: pre-configured JSON files for flight models and BFM scenarios
 - `fm_variants/`: flight model variant configuration for A/B testing different SFM coefficients:
   - `mig17f_fm_variants.json`: variant definitions with scaling factors (checked in)
   - `mods/`: generated variant mod folders (gitignored; regenerate with build-variants command)
@@ -128,6 +129,8 @@ python -m tools.mig17_fm_tool <command> [options]
 | `generate-bfm-mission` | Generate BFM (dogfight) test mission |
 | `analyze-bfm` | Analyze TacView ACMI file for BFM metrics |
 | `run-bfm-test` | Run complete BFM test workflow |
+| `quick-bfm-setup` | Build variants & BFM mission, install to DCS (ready to fly) |
+| `promote-variant` | Promote a variant to become the new baseline mod |
 
 Use `python -m tools.mig17_fm_tool <command> --help` for detailed options.
 
@@ -239,6 +242,78 @@ The BFM mission generator creates dogfight scenarios between MiG-17F variants an
 **Configuration files:**
 - `flight_profiles.json`: Defines engagement geometries, altitudes, speeds, and test scenarios
 - `flight_models.json`: Defines FM variants with high-AoA tuning parameters (polar drag, lift caps)
+
+### Quick BFM Setup (one-command workflow)
+
+The `quick-bfm-setup` command provides a streamlined workflow that builds FM variants, generates a BFM mission, and installs everything to DCS in a single command. After running it, just launch DCS and fly the mission.
+
+```bash
+# Point to a directory containing flight_models.json
+python -m tools.mig17_fm_tool quick-bfm-setup \
+  --config-dir ai_scratch_area/stage4_tuning
+
+# Use explicit variant file
+python -m tools.mig17_fm_tool quick-bfm-setup \
+  --variant-json fm_variants/mig17f_rc1.json
+
+# Limit to priority-1 scenarios only
+python -m tools.mig17_fm_tool quick-bfm-setup \
+  --config-dir ai_scratch_area/stage4_tuning \
+  --max-priority 1
+
+# Override the default BFM scenario config
+python -m tools.mig17_fm_tool quick-bfm-setup \
+  --config-dir ai_scratch_area/stage4_tuning \
+  --bfm-config path/to/custom_scenarios.json
+```
+
+**Configuration options:**
+- `--config-dir`: Point to a directory containing `flight_models.json`
+- `--variant-json`: Explicit path to flight models JSON (overrides `--config-dir`)
+- `--bfm-config`: Override the BFM scenario config (default: `tools/resources/flight_scenarios_f4e_merge.json`)
+
+**What it does:**
+1. Builds all FM variant mods from the variant JSON configuration
+2. Installs variant mods to DCS Saved Games
+3. Installs the base MiG-17 mod
+4. Generates a BFM test mission with all variants and scenarios
+5. Saves the mission to DCS Missions folder
+
+**After running:**
+1. Launch DCS
+2. Go to Mission Editor
+3. Load `MiG17F_BFM_Test.miz`
+4. Click 'Fly' to start the mission
+
+**Pre-configured scenario files** are available in `tools/resources/`:
+- `flight_scenarios_f4e_merge.json`: Head-on merge vs F-4E at 1000ft MSL (MiG-17 at 380kt, F-4E at 450kt)
+
+### Promoting a Variant to Baseline
+
+After testing variants, use `promote-variant` to make a tested variant the new baseline `[VWV] MiG-17` mod:
+
+```bash
+# Promote a variant to become the new baseline
+python -m tools.mig17_fm_tool promote-variant RC1_1_G6_FLAPS05 \
+  --version RC2 \
+  --config-dir ai_scratch_area/stage5_tuning
+
+# Or use explicit variant JSON path
+python -m tools.mig17_fm_tool promote-variant MY_VARIANT \
+  --version RC3 \
+  --variant-json path/to/flight_models.json
+```
+
+**What it does:**
+1. Loads the variant definition from the flight_models.json file
+2. Applies the variant's SFM coefficient scales to the baseline mod
+3. Updates all identifiers (self_ID, displayName, update_id, LogBook type) with the new version
+4. Completely replaces the `[VWV] MiG-17` directory with the promoted variant
+
+**After promoting:**
+- The display name becomes `[VWV] MiG-17F (RC2)` (using the version you specified)
+- The mod retains all original files (shapes, textures, liveries) but with updated flight model
+- You should commit the changes to version control
 
 ### Legacy Script Usage
 

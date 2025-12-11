@@ -121,6 +121,21 @@ class TestBFMScenario(unittest.TestCase):
         )
         self.assertEqual("BFM_F86_OFF6_MED_CORNER", scenario.id)
         self.assertEqual(1, scenario.priority)
+        self.assertIsNone(scenario.opponent_speed)
+
+    def test_creation_with_opponent_speed(self) -> None:
+        """BFMScenario can be created with opponent_speed."""
+        scenario = bfm_gen.BFMScenario(
+            id="BFM_F4E_MERGE",
+            opponent="f4e",
+            geometry="head_on",
+            altitude="low",
+            speed="mig17_merge",
+            priority=1,
+            opponent_speed="f4e_merge",
+        )
+        self.assertEqual("mig17_merge", scenario.speed)
+        self.assertEqual("f4e_merge", scenario.opponent_speed)
 
 
 class TestLoadBFMConfig(unittest.TestCase):
@@ -236,6 +251,27 @@ class TestLoadBFMConfig(unittest.TestCase):
 
         self.assertEqual(1, len(config.scenarios))
         self.assertEqual("BFM_TEST_1", config.scenarios[0].id)
+
+    def test_loads_opponent_speed(self) -> None:
+        """Loads opponent_speed from scenario correctly."""
+        config_data = self._create_minimal_config()
+        # Add second speed and set opponent_speed
+        config_data["initial_speeds"].append({
+            "id": "fast",
+            "name": "Fast Speed",
+            "speed_kt": 450,
+        })
+        config_data["test_scenarios"][0]["opponent_speed"] = "fast"
+
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False
+        ) as f:
+            json.dump(config_data, f)
+            f.flush()
+            config = bfm_gen.load_bfm_config(Path(f.name))
+
+        self.assertEqual("corner", config.scenarios[0].speed)
+        self.assertEqual("fast", config.scenarios[0].opponent_speed)
 
 
 class TestGetOrCreatePlaneType(unittest.TestCase):

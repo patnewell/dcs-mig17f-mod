@@ -151,18 +151,18 @@ local vwv_mig17f = {
     stores_number = 9,
     bank_angle_max = 75, -- Max bank angle (for AI)
     Ny_min = -3, -- Min G (for AI)
-    Ny_max = 7, -- Max G (for AI) -- RC1: reduced from 8 to match FM4A tuning
+    Ny_max = 6.0, -- Max G (for AI) -- RC1: reduced from 8 to match FM4A tuning
     V_max_sea_level = 1115 / 3.6, -- Max speed at sea level in m/s (for AI)
     V_max_h = 1145 / 3.6, -- Max speed at max altitude in m/s (for AI)
     wing_area = 22.6, -- wing area in m2
     thrust_sum_max = 2650, -- thrust in kgf (26.5 kN)
     thrust_sum_ab = 3380, -- thrust in kgf (33.8 kN)
     Vy_max = 60, -- Max climb speed in m/s (for AI)
-    flaps_maneuver = 0.25, -- RC1: reduced from 0.5 to match FM4A tuning
+    flaps_maneuver = 0.12, -- RC1: reduced from 0.5 to match FM4A tuning
     Mach_max = 0.95, -- Max speed in Mach (for AI)
     range = 1300, -- Max range in km (for AI)
     RCS = 2, -- Radar Cross Section m2
-    Ny_max_e = 7, -- Max G (for AI) -- RC1: reduced from 8 to match FM4A tuning
+    Ny_max_e = 6.0, -- Max G (for AI) -- RC1: reduced from 8 to match FM4A tuning
     detection_range_max = 250,
     IR_emission_coeff = 0.30, -- Normal engine -- IR_emission_coeff = 1 is Su-27 without afterburner. It is reference.
     IR_emission_coeff_ab = 0.45, -- With afterburner
@@ -421,21 +421,21 @@ local vwv_mig17f = {
                         -- RC1: FM4A tuning applied (polar_high_aoa=3.0 for M 0.2-0.8, cymax=0.70, aldop=0.70)
                         table_data =
                         {       --  M    Cx0*           Cya*            B2                      B4                      Omxmax Aldop*           Cymax*
-                                { 0.0,  0.0097  ,       0.0715 ,       0.043   ,       0.006   ,       0.460   ,       12.9   ,      0.81},
-                                { 0.1,  0.0097  ,       0.0715 ,       0.043   ,       0.006   ,       0.460   ,       12.9   ,      0.81},
-                                { 0.2,  0.0095  ,       0.0710 ,       0.043   ,       0.021   ,       0.860   ,       12.7   ,      0.80},
-                                { 0.3,  0.0091  ,       0.0718 ,       0.044   ,       0.024   ,       1.200   ,       12.6   ,      0.80},
-                                { 0.4,  0.0089  ,       0.0735 ,       0.045   ,       0.033   ,       1.580   ,       12.2   ,      0.78},
-                                { 0.5,  0.0089  ,       0.0765 ,       0.047   ,       0.039   ,       1.780   ,       12.0   ,      0.77},
-                                { 0.6,  0.0091  ,       0.0810 ,       0.049   ,       0.051   ,       1.620   ,       11.5   ,      0.74},
-                                { 0.7,  0.0094  ,       0.0855 ,       0.052   ,       0.084   ,       1.050   ,       10.9   ,      0.71},
-                                { 0.8,  0.0104  ,       0.0895 ,       0.056   ,       0.141   ,       0.520   ,       10.0   ,      0.67},
-                                { 0.86, 0.0115  ,       0.0860 ,       0.064   ,       0.078   ,       0.380   ,       9.4    ,      0.64},
-                                { 0.9,  0.0153  ,       0.0805 ,       0.074   ,       0.141   ,       0.320   ,       8.5    ,      0.60},
-                                { 0.94, 0.0237  ,       0.0775 ,       0.091   ,       0.216   ,       0.280   ,       7.7    ,      0.56},
-                                { 1.0,  0.0348  ,       0.0765 ,       0.114   ,       0.300   ,       0.230   ,       6.6    ,      0.52},
-                                { 1.04, 0.0366  ,       0.0770 ,       0.135   ,       0.402   ,       0.210   ,       6.1    ,      0.50},
-                                { 1.2,  0.0375  ,       0.0785 ,       0.153   ,       0.534   ,       0.190   ,       5.6    ,      0.48},
+                                { 0.0,  0.0097  ,       0.0715 ,       0.043   ,       0.006   ,       0.460   ,       10.3   ,      0.65},
+                                { 0.1,  0.0097  ,       0.0715 ,       0.043   ,       0.006   ,       0.460   ,       10.3   ,      0.65},
+                                { 0.2,  0.0095  ,       0.0710 ,       0.043   ,       0.042   ,       0.860   ,       10.2   ,      0.64},
+                                { 0.3,  0.0091  ,       0.0718 ,       0.044   ,       0.048   ,       1.200   ,       10.1   ,      0.64},
+                                { 0.4,  0.0089  ,       0.0735 ,       0.045   ,       0.066   ,       1.580   ,       9.8   ,      0.62},
+                                { 0.5,  0.0089  ,       0.0765 ,       0.047   ,       0.078   ,       1.780   ,       9.6   ,      0.62},
+                                { 0.6,  0.0091  ,       0.0810 ,       0.049   ,       0.102   ,       1.620   ,       9.2   ,      0.59},
+                                { 0.7,  0.0094  ,       0.0855 ,       0.052   ,       0.168   ,       1.050   ,       8.7   ,      0.57},
+                                { 0.8,  0.0104  ,       0.0895 ,       0.056   ,       0.282   ,       0.520   ,       8.0   ,      0.54},
+                                { 0.86, 0.0115  ,       0.0860 ,       0.064   ,       0.078   ,       0.380   ,       7.5    ,      0.51},
+                                { 0.9,  0.0153  ,       0.0805 ,       0.074   ,       0.141   ,       0.320   ,       6.8    ,      0.48},
+                                { 0.94, 0.0237  ,       0.0775 ,       0.091   ,       0.216   ,       0.280   ,       6.2    ,      0.45},
+                                { 1.0,  0.0348  ,       0.0765 ,       0.114   ,       0.300   ,       0.230   ,       5.3    ,      0.42},
+                                { 1.04, 0.0366  ,       0.0770 ,       0.135   ,       0.402   ,       0.210   ,       4.9    ,      0.40},
+                                { 1.2,  0.0375  ,       0.0785 ,       0.153   ,       0.534   ,       0.190   ,       4.5    ,      0.38},
                         }, -- end of table_data
                         -- M - Mach number
                         -- Cx0 - Coefficient, drag, profile, of the airplane

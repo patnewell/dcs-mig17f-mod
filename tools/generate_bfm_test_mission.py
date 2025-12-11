@@ -102,6 +102,7 @@ class BFMScenario:
     altitude: str
     speed: str
     priority: int
+    opponent_speed: Optional[str] = None  # Override opponent speed (uses 'speed' if None)
 
 
 @dataclass
@@ -178,6 +179,7 @@ def load_bfm_config(json_path: Path) -> BFMConfig:
                 altitude=scen["altitude"],
                 speed=scen["speed"],
                 priority=scen["priority"],
+                opponent_speed=scen.get("opponent_speed"),
             )
         )
 
@@ -334,6 +336,17 @@ def build_bfm_mission(
             altitude = bfm_config.altitudes.get(scen.altitude)
             speed = bfm_config.speeds.get(scen.speed)
 
+            # Get opponent speed (defaults to same as MiG-17 if not specified)
+            opp_speed = speed
+            if scen.opponent_speed:
+                opp_speed = bfm_config.speeds.get(scen.opponent_speed)
+                if not opp_speed:
+                    LOGGER.warning(
+                        "Unknown opponent_speed '%s' in %s, using default",
+                        scen.opponent_speed, scen.id
+                    )
+                    opp_speed = speed
+
             if not all([opponent, geometry, altitude, speed]):
                 LOGGER.warning("Incomplete scenario config for %s, skipping", scen.id)
                 continue
@@ -406,7 +419,7 @@ def build_bfm_mission(
                 aircraft_type=opp_plane,
                 position=mapping.Point(opp_pos[0], opp_pos[1], opp_alt_m),
                 altitude=opp_alt_m,
-                speed=speed.speed_kt * 1.852,
+                speed=opp_speed.speed_kt * 1.852,
                 maintask=task.CAP,
                 group_size=1,
             )
@@ -417,7 +430,7 @@ def build_bfm_mission(
             opp_unit.heading = math.radians(opp_pos[3])
 
             opp_start = opp_grp.points[0]
-            opp_start.speed = speed.speed_kt * KTS_TO_MPS
+            opp_start.speed = opp_speed.speed_kt * KTS_TO_MPS
             opp_start.tasks.append(
                 task.EngageTargets(
                     max_distance=20000,
@@ -431,7 +444,7 @@ def build_bfm_mission(
             opp_grp.add_waypoint(
                 pos=mapping.Point(opp_wp_x, opp_wp_y, opp_alt_m),
                 altitude=opp_alt_m,
-                speed=speed.speed_kt * 1.852,
+                speed=opp_speed.speed_kt * 1.852,
             )
 
             groups.append(mig17_group_name)

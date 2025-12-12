@@ -86,8 +86,8 @@ end
 
 local vwv_mig17f = {
 
-    Name = 'vwv_mig17f_fm5', -- AG
-    DisplayName = _('[VWV] MiG-17F FM5 Drag 0.6x (all)'),
+    Name = 'vwv_mig17f_rc1_1_g6', -- AG
+    DisplayName = _('[VWV] MiG-17F RC1.1 6g Clamp + Reduced Flaps'),
 
     Picture = "mig17f.png",
     Rate = "50",
@@ -100,7 +100,7 @@ local vwv_mig17f = {
             vis = 3, -- visibility gain.
             desrt = 'mig17f-oblomok', -- Name of destroyed object file name
             fire = {300, 2}, -- Fire on the ground after destoyed: 300sec 2m
-            username = 'mig17f_fm5', -- AG
+            username = 'mig17f_rc1_1g6', -- AG
             index = WSTYPE_PLACEHOLDER,
             classname = "lLandPlane",
             positioning = "BYNORMAL"

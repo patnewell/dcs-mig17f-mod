@@ -1,11 +1,11 @@
-self_ID = "tetet_mig17f_fm5"
+self_ID = "tetet_mig17f_fm5_g6"
 declare_plugin(self_ID, {
     installed = true, -- if false that will be place holder , or advertising
     dirName = current_mod_path,
-    displayName = _("[VWV] MiG-17F FM5 Drag 0.6x (all)"),
-    fileMenuName = _("FM5 MiG-17F"),
+    displayName = _("[VWV] MiG-17F RC1.1 6g Clamp + Reduced Flaps"),
+    fileMenuName = _("RC1.1G6 MiG-17F"),
     developerName = _("Hawkeye, TeTeT"),
-    update_id = "mig17f_fm5",
+    update_id = "mig17f_fm5_g6",
     version = "2.2.0",
     state = "installed",
     info = _("Wikipedia: The Mikoyan-Gurevich MiG-17 (Russian: Микоян и Гуревич МиГ-17; NATO reporting name: Fresco) is a high-subsonic fighter aircraft produced in the Soviet Union from 1952 and was operated by air forces internationally."),
@@ -27,7 +27,7 @@ declare_plugin(self_ID, {
     LogBook = {
         {
             name = _("MiG-17F"),
-            type = "mig17f_fm5"
+            type = "mig17f_fm5_g6"
         }
     },
 })

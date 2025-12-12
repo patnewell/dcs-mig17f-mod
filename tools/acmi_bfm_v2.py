@@ -127,23 +127,22 @@ def _iter_acmi_lines(path: str):
                 yield line.rstrip("\n")
 
 
-def parse_acmi_trajectories(
-    acmi_path: str
-) -> Dict[str, Dict[str, Any]]:
+def parse_acmi_trajectories(acmi_path: str) -> Dict[str, Dict[str, Any]]:
     """
-    Parse the ACMI into per-object trajectories.
+    Parse the ACMI into per-object trajectories, and record an optional
+    'death_time' (seconds) for each object based on Tacview events/flags.
 
     Returns a dict:
       object_id -> {
         "meta": { "Name": ..., "Type": ..., "Group": ..., ... },
-        "samples": [ (time_s, u_m, v_m, alt_m), ... ]
+        "samples": [ (time_s, u_m, v_m, alt_m), ... ],
+        "death_time": Optional[float]
       }
-
-    - u, v: TacView local flat coordinates in meters (X/Y), used for ground track.
-    - alt_m: altitude in meters.
     """
+
     objects: Dict[str, Dict[str, Any]] = {}
     state_by_id: Dict[str, Dict[str, Optional[float]]] = {}
+    death_times: Dict[str, float] = {}
     current_time = 0.0
 
     for line in _iter_acmi_lines(acmi_path):
@@ -167,19 +166,59 @@ def parse_acmi_trajectories(
 
         obj_id, rest = line.split(",", 1)
 
-        # Initialize object entry
-        if obj_id not in objects:
-            objects[obj_id] = {
-                "meta": {},
-                "samples": []
-            }
-
         # Parse props: key=value
         props: Dict[str, str] = {}
         for seg in rest.split(","):
             if "=" in seg:
                 k, v = seg.split("=", 1)
                 props[k] = v
+
+        # ------------------------------------------------------------------
+        # 1) Global events on object 0 (Destroyed, etc.)
+        # ------------------------------------------------------------------
+        evt = props.get("Event")
+        if obj_id == "0" and evt:
+            parts = evt.split("|")
+            evt_type = parts[0] if parts else ""
+            if evt_type == "Destroyed":
+                # Subsequent fields are object ids (hex or decimal)
+                for target in parts[1:]:
+                    target_id = target.strip()
+                    if not target_id:
+                        continue
+                    # Only record the first time we see a destruction timestamp
+                    death_times.setdefault(target_id, current_time)
+
+        # ------------------------------------------------------------------
+        # 2) Per-object damage flags
+        # ------------------------------------------------------------------
+        # Health goes from 1.0 (undamaged) down to 0.0 (destroyed)
+        if "Health" in props:
+            try:
+                h = float(props["Health"])
+                if h <= 0.05:
+                    death_times.setdefault(obj_id, current_time)
+            except ValueError:
+                pass
+
+        # Disabled==1 typically means out-of-combat / AI killed
+        if "Disabled" in props:
+            try:
+                d = float(props["Disabled"])
+                if d >= 0.5:
+                    death_times.setdefault(obj_id, current_time)
+            except ValueError:
+                pass
+
+        # ------------------------------------------------------------------
+        # 3) Initialize object entry
+        # ------------------------------------------------------------------
+        if obj_id not in objects:
+            objects[obj_id] = {
+                "meta": {},
+                "samples": [],
+                "death_time": None,
+            }
 
         meta = objects[obj_id]["meta"]
 
@@ -188,13 +227,14 @@ def parse_acmi_trajectories(
             if key in props:
                 meta[key] = props[key]
 
+        # If there is no T=... position for this line, we're done here
         if "T" not in props:
             continue
 
         # Maintain last-known position for this object
         st = state_by_id.get(
             obj_id,
-            {"lon": None, "lat": None, "alt": None, "u": None, "v": None}
+            {"lon": None, "lat": None, "alt": None, "u": None, "v": None},
         )
 
         parts = props["T"].split("|")
@@ -216,7 +256,7 @@ def parse_acmi_trajectories(
             except ValueError:
                 pass
 
-        # U/V interpretation depends on field count (TacView formats):
+        # U/V interpretation depends on field count (Tacview formats):
         #  - T=Lon|Lat|Alt|U|V                (5 fields)
         #  - T=Lon|Lat|Alt|Roll|Pitch|Yaw|U|V|Heading  (>=7 fields)
         if len(parts) == 5:
@@ -231,7 +271,7 @@ def parse_acmi_trajectories(
                 except ValueError:
                     pass
         elif len(parts) >= 7:
-            if len(parts) >= 7 and parts[6] != "":
+            if parts[6] != "":
                 try:
                     st["u"] = float(parts[6])
                 except ValueError:
@@ -250,6 +290,11 @@ def parse_acmi_trajectories(
         objects[obj_id]["samples"].append(
             (current_time, float(st["u"]), float(st["v"]), float(st["alt"]))
         )
+
+    # Attach death_time to objects if known
+    for oid, t in death_times.items():
+        if oid in objects:
+            objects[oid]["death_time"] = t
 
     return objects
 
@@ -899,33 +944,38 @@ def analyze_acmi(
     acmi_path: str,
     env: Dict[str, float],
     object_filter: Optional[str] = None,
-) -> List[Dict[str, Any]]:
+):
     """
     Parse ACMI and compute metrics for all objects that match the filter.
+
+    This version respects per-object 'death_time' recorded by
+    parse_acmi_trajectories: any samples after the aircraft has been
+    destroyed/disabled are discarded before metrics are computed.
     """
     objects = parse_acmi_trajectories(acmi_path)
     results: List[Dict[str, Any]] = []
 
     for obj_id, data in objects.items():
-        meta = data["meta"]
-        samples = data["samples"]
+        meta = data.get("meta", {})
+        samples: List[Tuple[float, float, float, float]] = data.get("samples", [])
+
+        # Optional filter by name/type/group/pilot
+        if object_filter and not object_matches_filter(meta, object_filter):
+            continue
+
+        # Truncate telemetry at destruction time if known
+        death_time = data.get("death_time")
+        if death_time is not None:
+            samples = [s for s in samples if s[0] <= death_time]
 
         if not samples:
             continue
-
-        if object_filter:
-            if not object_matches_filter(meta, object_filter):
-                continue
-        else:
-            # Default: look for MiG-17 mod types if no explicit filter provided
-            if not object_matches_filter(meta, "vwv_mig17f"):
-                continue
 
         metrics = compute_flight_metrics(samples, env)
         if metrics is None:
             continue
 
-        record = {
+        record: Dict[str, Any] = {
             "object_id": obj_id,
             "name": meta.get("Name", ""),
             "type": meta.get("Type", ""),

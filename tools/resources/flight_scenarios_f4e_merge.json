@@ -1,12 +1,26 @@
 {
   "version": 1,
   "description": "Single BFM head-on merge scenario: MiG-17F vs F-4E Phantom at 1000ft MSL",
+  "coordinate_system_notes": {
+    "description": "DCS Caucasus map coordinate reference",
+    "axes": "X=North-South (positive=North), Y=East-West (positive=East)",
+    "units": "Meters. 1nm=1852m, grid_square~=40nm=74080m",
+    "black_sea": "Y < ~350000 is over water (west of Georgian coast)",
+    "constraint": "For low-altitude flights, keep Y < 350000 to stay over Black Sea",
+    "grid_column_V": "Approximately Y=350000-400000. Stay west of this for water ops.",
+    "reference_airports": {
+      "Sochi-Adler": {"x": -164496, "y": 462219},
+      "Sukhumi": {"x": -220592, "y": 564392},
+      "Batumi": {"x": -355811, "y": 617386}
+    }
+  },
   "mission_settings": {
     "duration_seconds": 300,
     "test_group_spacing_nm": 50,
     "origin": {
-      "x": -100000,
-      "y": -300000
+      "x": -200000,
+      "y": 200000,
+      "_comment": "Y=200000 places flights over Black Sea around grid column T, west of coastline"
     }
   },
   "flight_envelope_targets": {

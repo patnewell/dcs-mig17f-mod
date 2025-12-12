@@ -65,3 +65,34 @@ All Claude Code output should be:
 - directly runnable
 - formatted with Black-style conventions
 - accompanied by a short explanation of design choices when helpful
+
+## 8. DCS Caucasus Map Coordinate System
+The pydcs library uses meters for coordinates on the Caucasus map:
+
+**Axis orientation:**
+- **X axis = North-South** (positive X = North)
+- **Y axis = East-West** (positive Y = East)
+
+**Unit conversion:**
+- 1 nautical mile (nm) = 1852 meters
+- 1 kilometer = 0.54 nm
+
+**Reference airports (for positioning):**
+| Airport           | X (North-South) | Y (East-West) |
+|-------------------|-----------------|---------------|
+| Batumi            | -355,811        | 617,386       |
+| Kutaisi           | -284,887        | 683,859       |
+| Tbilisi-Lochini   | -315,671        | 896,630       |
+| Sukhumi-Babushara | -220,592        | 564,392       |
+| Sochi-Adler       | -164,496        | 462,219       |
+
+**Geographic notes:**
+- Batumi is on the southwest coast (low X, medium Y)
+- Tbilisi is inland to the east (higher Y than Batumi)
+- Sochi is north along the coast (higher X than Batumi)
+- The Black Sea is to the west (lower Y values)
+
+**Example positioning:**
+To place aircraft near Kutaisi: `x=-280000, y=680000`
+To move 50 nm east: add `50 * 1852 = 92,600` to Y
+To move 50 nm north: add `50 * 1852 = 92,600` to X

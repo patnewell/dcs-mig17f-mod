@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from dcs import countries, mapping, mission, planes, task
+from dcs import countries, mapping, mission, planes, task, unit
 from dcs import triggers, action, weather
 from dcs.task import Targets
 from dcs.terrain import caucasus
@@ -327,6 +327,23 @@ def build_bfm_mission(
     else:
         mig17_types = [("", mig17_type_name)]
 
+    # Calculate grid dimensions for variants to minimize spread in any direction
+    # This prevents flights from spreading too far east over land
+    num_variants = len(mig17_types)
+    num_scenarios = len(active_scenarios)
+    total_groups = num_variants * num_scenarios
+
+    # Create a roughly square grid: more columns (X/north-south) than rows (Y/east-west)
+    # This keeps east-west spread minimal for Black Sea operations
+    grid_cols_y = max(1, int(math.ceil(math.sqrt(total_groups / 2))))  # East-west
+    grid_cols_x = max(1, int(math.ceil(total_groups / grid_cols_y)))   # North-south
+
+    LOGGER.info(
+        "Grid layout: %d groups in %dx%d grid (X=%d north-south, Y=%d east-west)",
+        total_groups, grid_cols_x, grid_cols_y, grid_cols_x, grid_cols_y
+    )
+
+    group_index = 0
     for variant_idx, (variant_prefix, mig17_dcs_type) in enumerate(mig17_types):
         mig17_plane = get_or_create_plane_type(mig17_dcs_type)
 
@@ -351,11 +368,14 @@ def build_bfm_mission(
                 LOGGER.warning("Incomplete scenario config for %s, skipping", scen.id)
                 continue
 
-            # Grid layout: variants along rows (Y/N-S), scenarios along columns (X/E-W)
-            row = variant_idx
-            col = scen_idx
-            center_x = bfm_config.origin_x + col * spacing_m
-            center_y = bfm_config.origin_y + row * spacing_m
+            # Grid layout: arrange groups in a 2D grid to minimize east-west spread
+            # X = North-South (can spread freely over water)
+            # Y = East-West (must stay west/limited to remain over Black Sea)
+            grid_x = group_index % grid_cols_x   # Column in north-south direction
+            grid_y = group_index // grid_cols_x  # Row in east-west direction
+            center_x = bfm_config.origin_x + grid_x * spacing_m
+            center_y = bfm_config.origin_y + grid_y * spacing_m
+            group_index += 1
 
             # Calculate initial positions
             mig17_pos, opp_pos = calculate_engagement_positions(
@@ -387,6 +407,7 @@ def build_bfm_mission(
             mig17_unit = mig17_grp.units[0]
             mig17_unit.heading = math.radians(mig17_pos[3])
             mig17_unit.fuel = int(MIG17_FUEL_MAX_KG * MIG17_FUEL_FRACTION_BFM)
+            mig17_unit.skill = unit.Skill.Excellent
 
             # Set initial waypoint speed
             mig_start = mig17_grp.points[0]
@@ -428,6 +449,8 @@ def build_bfm_mission(
 
             opp_unit = opp_grp.units[0]
             opp_unit.heading = math.radians(opp_pos[3])
+            opp_unit.skill = unit.Skill.Excellent
+            opp_unit.fuel = int(opp_plane.fuel_max * MIG17_FUEL_FRACTION_BFM)
 
             opp_start = opp_grp.points[0]
             opp_start.speed = opp_speed.speed_kt * KTS_TO_MPS

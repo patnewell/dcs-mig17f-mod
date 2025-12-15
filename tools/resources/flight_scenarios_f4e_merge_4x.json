@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "description": "Single BFM head-on merge scenario: MiG-17F vs F-4E Phantom at 1000ft MSL",
+  "description": "4x instances BFM head-on merge scenario: MiG-17F vs F-4E Phantom at 1000ft MSL",
   "coordinate_system_notes": {
     "description": "DCS Caucasus map coordinate reference",
     "axes": "X=North-South (positive=North), Y=East-West (positive=East)",
@@ -32,7 +32,7 @@
   },
   "flight_envelope_targets": {
     "description": "Performance targets for head-on merge scenario",
-    "notes": "Single scenario per variant for quick BFM testing"
+    "notes": "4x instances per variant for more statistical data"
   },
   "opponent_aircraft": [
     {
@@ -86,7 +86,8 @@
       "speed": "mig17_merge",
       "opponent_speed": "f4e_merge",
       "priority": 1,
-      "notes": "Head-on merge at 1000ft MSL. MiG-17 at 380kt, F-4E at 450kt. Both with 50% fuel, guns only."
+      "instances": 4,
+      "notes": "Head-on merge at 1000ft MSL. MiG-17 at 380kt, F-4E at 450kt. Both with 50% fuel, guns only. 4 instances per variant."
     }
   ],
   "aircraft_configuration": {

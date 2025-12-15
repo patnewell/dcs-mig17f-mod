@@ -829,9 +829,12 @@ def cmd_quick_bfm_setup(args: argparse.Namespace) -> int:
     if variant_json is None:
         variant_json = Path("./fm_variants/mig17f_fm_variants.json").resolve()
 
-    # BFM config: use explicit argument or default to standard F-4E merge scenario
+    # BFM config: use explicit argument, --4x flag, or default to standard F-4E merge scenario
     if args.bfm_config:
         bfm_config_path = args.bfm_config.resolve()
+    elif getattr(args, "use_4x", False):
+        bfm_config_path = repo_root / "tools" / "resources" / "flight_scenarios_f4e_merge_4x.json"
+        LOGGER.info("Using 4x instances config")
     else:
         bfm_config_path = repo_root / "tools" / "resources" / "flight_scenarios_f4e_merge.json"
 
@@ -995,6 +998,12 @@ def add_quick_bfm_setup_parser(subparsers: argparse._SubParsersAction) -> None:
         default=3,
         choices=[1, 2, 3],
         help="Maximum scenario priority to include (1=core, 2=standard, 3=all)",
+    )
+    parser_quick.add_argument(
+        "--4x",
+        dest="use_4x",
+        action="store_true",
+        help="Use 4x instances config (4 copies of each scenario per variant)",
     )
     parser_quick.set_defaults(func=cmd_quick_bfm_setup)
 

@@ -1,16 +1,45 @@
 """Build MiG-17F flight model variant mod folders from JSON configuration.
 
-This script reads the FM variant definitions from mig17f_fm_variants.json and
-generates variant mod folders with appropriately scaled SFM coefficients.
+This script reads FM variant definitions from a JSON file and generates *variant*
+mod folders with appropriately scaled SFM coefficients (SFM_Data).
+
+It is intentionally lightweight and uses simple text/regex patching against the
+baseline mod's `Database/mig17f.lua` and `entry.lua`.
 
 Usage:
     python build_mig17f_variants_from_json.py [options]
 
 Options:
-    --base-mod-root PATH      Path to base mod (default: repo root + base_mod_dir from JSON)
-    --variants-root PATH      Output directory for variants (default: ./fm_variants)
+    --base-mod-root PATH      Path to base mod folder (default: repo root + base_mod_dir from JSON)
+    --variants-root PATH      Output directory for variants (default: ./fm_variants/mods)
     --dcs-saved-games PATH    Optional path to DCS Saved Games for installation
+    --json-file PATH          Path to the variants JSON (default: ./fm_variants/mig17f_fm_variants.json)
+
+JSON schema (high level):
+    {
+      "version": <int>,
+      "aircraft": { ... },
+      "variants": [
+        {
+          "variant_id": "...",
+          "short_name": "...",
+          "mod_dir_name": "...",
+          "dcs_type_name": "...",
+          "shape_username": "...",
+          "display_name": "...",
+          "scales": { ... },
+          "notes": "..."
+        }
+      ]
+    }
+
+Notes:
+- Identity fields (Name/DisplayName/shape username + entry.lua IDs) are always
+  patched so each variant can coexist in DCS.
+- Numeric FM patches are only applied when the corresponding scale differs from
+  baseline (1.0) to avoid rewriting baseline numbers due to formatting/rounding.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -25,26 +54,57 @@ from typing import Optional
 LOGGER = logging.getLogger(__name__)
 
 
-@dataclass(frozen=True)
-class Scales:
-    """Scaling factors for SFM coefficients."""
-
-    cx0: float
-    polar: float
-    engine_drag: float
-    pfor: float
-    polar_high_aoa: float = 1.0  # B4 multiplier at Mach 0.2-0.8 (high-AoA drag regime)
-    cymax_high_aoa: float = 1.0  # Cymax multiplier at low Mach (limits max lift/G)
-    cymax: float = 1.0  # Global Cymax multiplier (all Mach numbers)
-    aldop: float = 1.0  # Aldop (departure AoA) multiplier
-    ny_max_abs: Optional[float] = None  # Absolute Ny_max/Ny_max_e value (not a scale)
-    flaps_maneuver_scale: float = 1.0  # flaps_maneuver multiplier
-
 # Mach thresholds for high-AoA scaling (polar_high_aoa applies for 0.2 <= M <= 0.8)
 HIGH_AOA_MACH_MIN = 0.2
 HIGH_AOA_MACH_MAX = 0.8
 # Legacy threshold for cymax_high_aoa (M < 0.5)
 CYMAX_HIGH_AOA_MACH_THRESHOLD = 0.5
+
+
+def _is_close(a: float, b: float = 1.0, tol: float = 1e-9) -> bool:
+    return abs(a - b) <= tol
+
+
+def _format_scaled_value(new_value: float, original_text: str) -> str:
+    """Format a scaled numeric value in a way that preserves the *style* of the original.
+
+    - If the original looks like an int (no '.', 'e', 'E'), emit an int.
+    - Otherwise, preserve the original number of decimal places (up to 6).
+    """
+    if re.search(r"[.eE]", original_text):
+        if "." in original_text:
+            decimals = len(original_text.split(".", 1)[1])
+            decimals = max(0, min(decimals, 6))
+            return f"{new_value:.{decimals}f}"
+        return str(new_value)
+    return str(int(round(new_value)))
+
+
+@dataclass(frozen=True)
+class Scales:
+    """Scaling factors for SFM coefficients.
+
+    All multipliers apply relative to the *baseline mod* you are copying.
+    """
+
+    # Aerodynamics
+    cx0: float = 1.0
+    polar: float = 1.0
+    polar_high_aoa: float = 1.0  # extra B4 multiplier at Mach 0.2-0.8 (high-AoA drag regime)
+    cymax_high_aoa: float = 1.0  # Cymax multiplier at low Mach (<0.5)
+    cymax: float = 1.0  # global Cymax multiplier (all Mach numbers)
+    aldop: float = 1.0  # Aldop (departure AoA) multiplier
+
+    # Engine / thrust
+    engine_drag: float = 1.0  # dcx_eng multiplier
+    pmax: float = 1.0  # military thrust multiplier (Pmax column)
+    pfor: float = 1.0  # afterburner thrust multiplier (Pfor column)
+    dpdh_m_scale: float = 1.0  # dpdh_m multiplier (mil altitude lapse)
+    dpdh_f_scale: float = 1.0  # dpdh_f multiplier (AB altitude lapse)
+
+    # AI limits
+    ny_max_abs: Optional[float] = None  # absolute Ny_max/Ny_max_e override (not a scale)
+    flaps_maneuver_scale: float = 1.0  # flaps_maneuver multiplier
 
 
 @dataclass(frozen=True)
@@ -79,20 +139,24 @@ def load_variant_config(json_path: Path) -> VariantConfig:
         data = json.load(f)
 
     aircraft = data["aircraft"]
-    variants = []
+    variants: list[Variant] = []
 
     for v in data["variants"]:
+        s = v.get("scales", {})
         scales = Scales(
-            cx0=v["scales"]["cx0"],
-            polar=v["scales"]["polar"],
-            engine_drag=v["scales"]["engine_drag"],
-            pfor=v["scales"]["pfor"],
-            polar_high_aoa=v["scales"].get("polar_high_aoa", 1.0),
-            cymax_high_aoa=v["scales"].get("cymax_high_aoa", 1.0),
-            cymax=v["scales"].get("cymax", 1.0),
-            aldop=v["scales"].get("aldop", 1.0),
-            ny_max_abs=v["scales"].get("ny_max_abs"),
-            flaps_maneuver_scale=v["scales"].get("flaps_maneuver_scale", 1.0),
+            cx0=s.get("cx0", 1.0),
+            polar=s.get("polar", 1.0),
+            polar_high_aoa=s.get("polar_high_aoa", 1.0),
+            cymax_high_aoa=s.get("cymax_high_aoa", 1.0),
+            cymax=s.get("cymax", 1.0),
+            aldop=s.get("aldop", 1.0),
+            engine_drag=s.get("engine_drag", 1.0),
+            pmax=s.get("pmax", 1.0),
+            pfor=s.get("pfor", 1.0),
+            dpdh_m_scale=s.get("dpdh_m_scale", 1.0),
+            dpdh_f_scale=s.get("dpdh_f_scale", 1.0),
+            ny_max_abs=s.get("ny_max_abs"),
+            flaps_maneuver_scale=s.get("flaps_maneuver_scale", 1.0),
         )
         variants.append(
             Variant(
@@ -117,103 +181,120 @@ def load_variant_config(json_path: Path) -> VariantConfig:
     )
 
 
+def _should_scale_aero(scales: Scales) -> bool:
+    return not (
+        _is_close(scales.cx0)
+        and _is_close(scales.polar)
+        and _is_close(scales.polar_high_aoa)
+        and _is_close(scales.cymax)
+        and _is_close(scales.cymax_high_aoa)
+        and _is_close(scales.aldop)
+    )
+
+
+def _should_scale_engine_drag(scales: Scales) -> bool:
+    return not _is_close(scales.engine_drag)
+
+
+def _should_scale_engine_thrust(scales: Scales) -> bool:
+    return not (_is_close(scales.pmax) and _is_close(scales.pfor))
+
+
+def _should_scale_engine_dpdh(scales: Scales) -> bool:
+    return not (_is_close(scales.dpdh_m_scale) and _is_close(scales.dpdh_f_scale))
+
+
 def scale_aero_table_data(lua_content: str, scales: Scales) -> str:
     """Apply scaling to aerodynamics.table_data entries.
 
-    Each row in table_data is: { M, Cx0, Cya, B2, B4, Omxmax, Aldop, Cymax }
+    Each row in table_data is:
+        { M, Cx0, Cya, B2, B4, Omxmax, Aldop, Cymax }
+
     We multiply:
     - Cx0 by scales.cx0
     - B2 by scales.polar
     - B4 by scales.polar (and additionally by scales.polar_high_aoa at Mach 0.2-0.8)
     - Aldop by scales.aldop
     - Cymax by scales.cymax (and additionally by scales.cymax_high_aoa at low Mach)
+
+    NOTE: This routine rewrites numeric formatting. Call it only when you are
+    actually changing something (see _should_scale_aero).
     """
-    # Pattern to match table rows in aerodynamics.table_data
-    # Example: { 0.0,  0.0162, 0.0715, 0.072, 0.010, 3.0, 30.0, 1.4 }
-    # Captures: M, Cx0, Cya, B2, B4, Omxmax, Aldop, Cymax
+
     aero_row_pattern = re.compile(
         r"(\{\s*)"
         r"([\d.]+)(\s*,\s*)"  # M (group 2)
-        r"([\d.]+)(\s*,\s*)"  # Cx0 (group 4) - scale this
+        r"([\d.]+)(\s*,\s*)"  # Cx0 (group 4)
         r"([\d.]+)(\s*,\s*)"  # Cya (group 6)
-        r"([\d.]+)(\s*,\s*)"  # B2 (group 8) - scale this
-        r"([\d.]+)(\s*,\s*)"  # B4 (group 10) - scale this
+        r"([\d.]+)(\s*,\s*)"  # B2 (group 8)
+        r"([\d.]+)(\s*,\s*)"  # B4 (group 10)
         r"([\d.]+)(\s*,\s*)"  # Omxmax (group 12)
         r"([\d.]+)(\s*,\s*)"  # Aldop (group 14)
-        r"([\d.]+)(\s*\})"    # Cymax (group 16) - scale this at low Mach
+        r"([\d.]+)(\s*\})"  # Cymax (group 16)
     )
 
-    # Find the aerodynamics.table_data section
     aero_start = lua_content.find("aerodynamics")
     if aero_start == -1:
         LOGGER.warning("Could not find aerodynamics section")
         return lua_content
 
-    # Find table_data within aerodynamics
     table_data_start = lua_content.find("table_data", aero_start)
     if table_data_start == -1:
         LOGGER.warning("Could not find table_data in aerodynamics section")
         return lua_content
 
-    # Find the end of the table_data block (look for closing }, --)
-    # We need to find the matching closing brace after 'table_data ='
     search_start = lua_content.find("=", table_data_start)
     if search_start == -1:
         return lua_content
 
-    # Find the end of table_data section by looking for '}, -- end of table_data'
     table_data_end = lua_content.find("}, -- end of table_data", search_start)
     if table_data_end == -1:
-        # Try alternative pattern
         table_data_end = lua_content.find("end of table_data", search_start)
         if table_data_end == -1:
-            # Estimate the end by looking for 'engine' section
             engine_start = lua_content.find("engine", search_start)
             table_data_end = engine_start if engine_start != -1 else len(lua_content)
 
     aero_section = lua_content[search_start:table_data_end]
 
     def replace_aero_row(match: re.Match) -> str:
-        brace_open = match.group(1)   # {
-        mach = float(match.group(2))  # M
-        sep1 = match.group(3)         # ,
-        cx0 = float(match.group(4))   # Cx0
-        sep2 = match.group(5)         # ,
-        cya = match.group(6)          # Cya (unchanged)
-        sep3 = match.group(7)         # ,
-        b2 = float(match.group(8))    # B2
-        sep4 = match.group(9)         # ,
-        b4 = float(match.group(10))   # B4
-        sep5 = match.group(11)        # ,
-        omxmax = match.group(12)      # Omxmax (unchanged)
-        sep6 = match.group(13)        # ,
-        aldop = float(match.group(14))  # Aldop
-        sep7 = match.group(15)        # ,
-        cymax = float(match.group(16))  # Cymax
-        brace_close = match.group(17)   # }
+        brace_open = match.group(1)
+        mach = float(match.group(2))
+        sep1 = match.group(3)
+        cx0 = float(match.group(4))
+        sep2 = match.group(5)
+        cya_txt = match.group(6)
+        sep3 = match.group(7)
+        b2 = float(match.group(8))
+        sep4 = match.group(9)
+        b4 = float(match.group(10))
+        sep5 = match.group(11)
+        omx_txt = match.group(12)
+        sep6 = match.group(13)
+        aldop = float(match.group(14))
+        sep7 = match.group(15)
+        cymax = float(match.group(16))
+        brace_close = match.group(17)
 
-        # Apply base scaling
         new_cx0 = cx0 * scales.cx0
         new_b2 = b2 * scales.polar
         new_b4 = b4 * scales.polar
         new_aldop = aldop * scales.aldop
         new_cymax = cymax * scales.cymax
 
-        # Apply polar_high_aoa to B4 only at Mach 0.2-0.8
         if HIGH_AOA_MACH_MIN <= mach <= HIGH_AOA_MACH_MAX:
             new_b4 *= scales.polar_high_aoa
 
-        # Apply cymax_high_aoa at low Mach (legacy behavior)
         if mach < CYMAX_HIGH_AOA_MACH_THRESHOLD:
             new_cymax *= scales.cymax_high_aoa
 
+        # Keep formatting stable-ish (same as previous versions of this tool)
         return (
             f"{brace_open}{mach}{sep1}"
             f"{new_cx0:.4f}{sep2}"
-            f"{cya}{sep3}"
+            f"{cya_txt}{sep3}"
             f"{new_b2:.3f}{sep4}"
             f"{new_b4:.3f}{sep5}"
-            f"{omxmax}{sep6}"
+            f"{omx_txt}{sep6}"
             f"{new_aldop:.1f}{sep7}"
             f"{new_cymax:.2f}{brace_close}"
         )
@@ -232,39 +313,52 @@ def scale_engine_dcx_eng(lua_content: str, scales: Scales) -> str:
         new_value = value * scales.engine_drag
         return f"{prefix}{new_value:.4f}"
 
-    return pattern.sub(replace_dcx_eng, lua_content)
+    return pattern.sub(replace_dcx_eng, lua_content, count=1)
 
 
-def scale_engine_pfor(lua_content: str, scales: Scales) -> str:
-    """Apply scaling to Pfor values in engine.table_data.
-
-    Each row is: { M, Pmax, Pfor }
-    We only multiply Pfor, NOT Pmax.
-    """
-    # Find the SFM engine section (engine = {) after aerodynamics
-    # This is distinct from engines_count, engines_nozzles, etc.
+def _find_sfm_engine_start(lua_content: str) -> int:
+    """Find the start index of the SFM_Data.engine = { ... } block."""
     aero_end = lua_content.find("end of aerodynamics")
     if aero_end == -1:
-        LOGGER.warning("Could not find aerodynamics section end")
-        return lua_content
+        return -1
 
-    # Find "engine =" or "engine=" after aerodynamics
     engine_match = re.search(r"engine\s*=\s*\{", lua_content[aero_end:])
     if not engine_match:
-        LOGGER.warning("Could not find SFM engine section")
-        return lua_content
+        return -1
 
-    engine_start = aero_end + engine_match.start()
+    return aero_end + engine_match.start()
 
-    # Find table_data within this engine section
+
+def _find_sfm_engine_end(lua_content: str, engine_start: int) -> int:
+    """Best-effort end index for SFM engine section."""
+    if engine_start < 0:
+        return -1
+
+    end_marker = lua_content.find("}, -- end of engine", engine_start)
+    if end_marker != -1:
+        return end_marker
+
+    end_marker = lua_content.find("end of engine", engine_start)
+    if end_marker != -1:
+        return end_marker
+
+    return len(lua_content)
+
+
+def _find_engine_table_bounds(lua_content: str, engine_start: int) -> tuple[int, int] | None:
+    """Return (table_start_idx, table_end_idx) covering the engine.table_data content.
+
+    The returned slice is suitable for re.sub on table rows.
+    """
+    if engine_start < 0:
+        return None
+
     engine_table_match = re.search(r"table_data\s*=", lua_content[engine_start:])
     if not engine_table_match:
-        LOGGER.warning("Could not find table_data in engine section")
-        return lua_content
+        return None
 
     engine_table_start = engine_start + engine_table_match.start()
 
-    # Find the end of the engine table_data
     engine_table_end = lua_content.find("}, -- end of table_data", engine_table_start)
     if engine_table_end == -1:
         engine_table_end = lua_content.find("end of table_data", engine_table_start)
@@ -272,62 +366,130 @@ def scale_engine_pfor(lua_content: str, scales: Scales) -> str:
             end_engine = lua_content.find("end of engine", engine_table_start)
             engine_table_end = end_engine if end_engine != -1 else len(lua_content)
 
-    # Pattern for engine table rows: { M, Pmax, Pfor }
-    engine_row_pattern = re.compile(
-        r"(\{\s*"
-        r"[\d.]+\s*,\s*"  # M
-        r"[\d]+\s*,\s*"  # Pmax (do not change)
-        r")(\d+)(\s*\})"  # Pfor (scale this)
-    )
-
     table_start = lua_content.find("=", engine_table_start)
     if table_start == -1:
+        return None
+
+    return table_start, engine_table_end
+
+
+def scale_engine_thrust_table(lua_content: str, scales: Scales) -> str:
+    """Apply scaling to Pmax and Pfor values in SFM engine.table_data.
+
+    Each row is:
+        { M, Pmax, Pfor }
+
+    We multiply:
+    - Pmax by scales.pmax
+    - Pfor by scales.pfor
+
+    NOTE: This routine rewrites numeric formatting. Call it only when you are
+    actually changing something (see _should_scale_engine_thrust).
+    """
+    engine_start = _find_sfm_engine_start(lua_content)
+    if engine_start == -1:
+        LOGGER.warning("Could not find SFM engine section")
         return lua_content
 
-    engine_section = lua_content[table_start:engine_table_end]
+    bounds = _find_engine_table_bounds(lua_content, engine_start)
+    if not bounds:
+        LOGGER.warning("Could not find engine.table_data")
+        return lua_content
 
-    def replace_pfor(match: re.Match) -> str:
+    table_start, table_end = bounds
+    engine_section = lua_content[table_start:table_end]
+
+    engine_row_pattern = re.compile(
+        r"(\{\s*)"
+        r"([\d.]+)(\s*,\s*)"  # M
+        r"([\d.]+)(\s*,\s*)"  # Pmax
+        r"([\d.]+)(\s*\})"  # Pfor
+    )
+
+    def replace_row(match: re.Match) -> str:
+        brace_open = match.group(1)
+        mach_txt = match.group(2)
+        sep1 = match.group(3)
+        pmax_txt = match.group(4)
+        sep2 = match.group(5)
+        pfor_txt = match.group(6)
+        brace_close = match.group(7)
+
+        pmax_val = float(pmax_txt)
+        pfor_val = float(pfor_txt)
+
+        new_pmax = pmax_val * scales.pmax
+        new_pfor = pfor_val * scales.pfor
+
+        return (
+            f"{brace_open}{mach_txt}{sep1}"
+            f"{_format_scaled_value(new_pmax, pmax_txt)}{sep2}"
+            f"{_format_scaled_value(new_pfor, pfor_txt)}{brace_close}"
+        )
+
+    new_engine_section = engine_row_pattern.sub(replace_row, engine_section)
+    return lua_content[:table_start] + new_engine_section + lua_content[table_end:]
+
+
+def scale_engine_dpdh(lua_content: str, scales: Scales) -> str:
+    """Scale dpdh_m and dpdh_f inside the SFM engine section.
+
+    dpdh_m: altitude coefficient for max/mil thrust
+    dpdh_f: altitude coefficient for AB thrust
+
+    NOTE: Only call when dpdh_*_scale differs from 1.0.
+    """
+    engine_start = _find_sfm_engine_start(lua_content)
+    if engine_start == -1:
+        LOGGER.warning("Could not find SFM engine section")
+        return lua_content
+
+    engine_end = _find_sfm_engine_end(lua_content, engine_start)
+    if engine_end == -1:
+        return lua_content
+
+    engine_section = lua_content[engine_start:engine_end]
+
+    def repl_dpdh_m(match: re.Match) -> str:
         prefix = match.group(1)
-        pfor = int(match.group(2))
-        suffix = match.group(3)
-        new_pfor = int(round(pfor * scales.pfor))
-        return f"{prefix}{new_pfor}{suffix}"
+        orig_txt = match.group(2)
+        orig_val = float(orig_txt)
+        new_val = orig_val * scales.dpdh_m_scale
+        return f"{prefix}{_format_scaled_value(new_val, orig_txt)}"
 
-    new_engine_section = engine_row_pattern.sub(replace_pfor, engine_section)
-    return lua_content[:table_start] + new_engine_section + lua_content[engine_table_end:]
+    def repl_dpdh_f(match: re.Match) -> str:
+        prefix = match.group(1)
+        orig_txt = match.group(2)
+        orig_val = float(orig_txt)
+        new_val = orig_val * scales.dpdh_f_scale
+        return f"{prefix}{_format_scaled_value(new_val, orig_txt)}"
+
+    # Only patch first occurrence within engine section
+    engine_section = re.sub(r"(dpdh_m\s*=\s*)([-\d.]+)", repl_dpdh_m, engine_section, count=1)
+    engine_section = re.sub(r"(dpdh_f\s*=\s*)([-\d.]+)", repl_dpdh_f, engine_section, count=1)
+
+    return lua_content[:engine_start] + engine_section + lua_content[engine_end:]
 
 
 def patch_ny_max(lua_content: str, scales: Scales) -> str:
-    """Patch Ny_max and Ny_max_e to absolute values if ny_max_abs is set.
-
-    These are top-level aircraft properties that control max G for AI.
-    """
+    """Patch Ny_max and Ny_max_e to absolute values if ny_max_abs is set."""
     if scales.ny_max_abs is None:
         return lua_content
 
     ny_max_value = scales.ny_max_abs
 
-    # Patch Ny_max = X
     ny_max_pattern = re.compile(r"(Ny_max\s*=\s*)([\d.]+)")
-    lua_content = ny_max_pattern.sub(
-        rf"\g<1>{ny_max_value}", lua_content, count=1
-    )
+    lua_content = ny_max_pattern.sub(rf"\g<1>{ny_max_value}", lua_content, count=1)
 
-    # Patch Ny_max_e = X
     ny_max_e_pattern = re.compile(r"(Ny_max_e\s*=\s*)([\d.]+)")
-    lua_content = ny_max_e_pattern.sub(
-        rf"\g<1>{ny_max_value}", lua_content, count=1
-    )
+    lua_content = ny_max_e_pattern.sub(rf"\g<1>{ny_max_value}", lua_content, count=1)
 
     return lua_content
 
 
 def scale_flaps_maneuver(lua_content: str, scales: Scales) -> str:
-    """Scale the flaps_maneuver value by flaps_maneuver_scale.
-
-    flaps_maneuver controls AI maneuver-flap authority.
-    """
-    if scales.flaps_maneuver_scale == 1.0:
+    """Scale the flaps_maneuver value by flaps_maneuver_scale."""
+    if _is_close(scales.flaps_maneuver_scale):
         return lua_content
 
     pattern = re.compile(r"(flaps_maneuver\s*=\s*)([\d.]+)")
@@ -342,48 +504,33 @@ def scale_flaps_maneuver(lua_content: str, scales: Scales) -> str:
 
 
 def patch_entry_lua(entry_content: str, variant: Variant) -> str:
-    """Patch entry.lua with unique identifiers for this variant.
-
-    DCS requires each mod to have unique identifiers in entry.lua:
-    - self_ID: unique plugin identifier
-    - displayName: shown in module manager
-    - fileMenuName: shown in file menus
-    - update_id: for update checking
-    - LogBook.type: for pilot logbook
-    """
-    # Extract short variant suffix from dcs_type_name (e.g., "vwv_mig17f_fm0" -> "fm0")
+    """Patch entry.lua with unique identifiers for this variant."""
     variant_suffix = variant.dcs_type_name.split("_")[-1]
 
-    # Patch self_ID (line like: self_ID = "tetet_mig17f")
     entry_content = re.sub(
         r'(self_ID\s*=\s*["\'])([^"\']+)(["\'])',
         rf'\g<1>\g<2>_{variant_suffix}\g<3>',
         entry_content,
     )
 
-    # Patch displayName (line like: displayName = _("mig17f"),)
-    # Use the variant's display_name
     entry_content = re.sub(
         r'(displayName\s*=\s*_\(["\'])([^"\']+)(["\'])',
         rf'\g<1>{variant.display_name}\g<3>',
         entry_content,
     )
 
-    # Patch fileMenuName similarly
     entry_content = re.sub(
         r'(fileMenuName\s*=\s*_\(["\'])([^"\']+)(["\'])',
         rf'\g<1>{variant.short_name} MiG-17F\g<3>',
         entry_content,
     )
 
-    # Patch update_id
     entry_content = re.sub(
         r'(update_id\s*=\s*["\'])([^"\']+)(["\'])',
         rf'\g<1>\g<2>_{variant_suffix}\g<3>',
         entry_content,
     )
 
-    # Patch LogBook type (inside LogBook = { { ... type = "mig17f" ... } })
     entry_content = re.sub(
         r'(LogBook\s*=\s*\{\s*\{\s*[^}]*type\s*=\s*["\'])([^"\']+)(["\'])',
         rf'\g<1>\g<2>_{variant_suffix}\g<3>',
@@ -396,34 +543,18 @@ def patch_entry_lua(entry_content: str, variant: Variant) -> str:
 
 def patch_identity_fields(lua_content: str, variant: Variant) -> str:
     """Patch the Name, DisplayName, and shape_table_data.username fields."""
-    # Patch Name field
     name_pattern = re.compile(r"(Name\s*=\s*['\"])([^'\"]+)(['\"])")
-    lua_content = name_pattern.sub(
-        rf"\g<1>{variant.dcs_type_name}\g<3>", lua_content, count=1
-    )
+    lua_content = name_pattern.sub(rf"\g<1>{variant.dcs_type_name}\g<3>", lua_content, count=1)
 
-    # Patch DisplayName field - handle _('...') format with possible internal quotes
-    # Original format: DisplayName = _('[VWV] MiG-17F "Fresco C"'),
-    # We match from the opening quote to the closing quote before the closing paren
-    display_pattern = re.compile(
-        r"(DisplayName\s*=\s*_\(['\"])(.+?)(['\"])\)"
-    )
-    lua_content = display_pattern.sub(
-        rf"\g<1>{variant.display_name}\g<3>)", lua_content, count=1
-    )
+    display_pattern = re.compile(r"(DisplayName\s*=\s*_\(['\"])(.+?)(['\"]\)\s*,)")
+    lua_content = display_pattern.sub(rf"\g<1>{variant.display_name}\g<3>", lua_content, count=1)
 
-    # Patch shape_table_data[0].username (which appears as 'username' inside the table)
-    # Look for username in the shape_table_data section
     shape_start = lua_content.find("shape_table_data")
     if shape_start != -1:
-        # Find the first username field after shape_table_data
         username_pattern = re.compile(r"(username\s*=\s*['\"])([^'\"]+)(['\"])")
-        # We need to only replace the first occurrence after shape_table_data
         before_shape = lua_content[:shape_start]
         after_shape = lua_content[shape_start:]
-        after_shape = username_pattern.sub(
-            rf"\g<1>{variant.shape_username}\g<3>", after_shape, count=1
-        )
+        after_shape = username_pattern.sub(rf"\g<1>{variant.shape_username}\g<3>", after_shape, count=1)
         lua_content = before_shape + after_shape
 
     return lua_content
@@ -431,48 +562,44 @@ def patch_identity_fields(lua_content: str, variant: Variant) -> str:
 
 def apply_variant_modifications(lua_content: str, variant: Variant) -> str:
     """Apply all modifications for a variant to the Lua content."""
-    # First patch identity fields
+    scales = variant.scales
+
+    # Always patch identity fields (so DCS sees distinct aircraft types)
     lua_content = patch_identity_fields(lua_content, variant)
 
-    # Apply SFM scaling
-    lua_content = scale_aero_table_data(lua_content, variant.scales)
-    lua_content = scale_engine_dcx_eng(lua_content, variant.scales)
-    lua_content = scale_engine_pfor(lua_content, variant.scales)
+    # Only patch numeric FM data when needed (avoid baseline rewrites)
+    if _should_scale_aero(scales):
+        lua_content = scale_aero_table_data(lua_content, scales)
 
-    # Apply top-level property overrides
-    lua_content = patch_ny_max(lua_content, variant.scales)
-    lua_content = scale_flaps_maneuver(lua_content, variant.scales)
+    if _should_scale_engine_drag(scales):
+        lua_content = scale_engine_dcx_eng(lua_content, scales)
+
+    if _should_scale_engine_thrust(scales):
+        lua_content = scale_engine_thrust_table(lua_content, scales)
+
+    if _should_scale_engine_dpdh(scales):
+        lua_content = scale_engine_dpdh(lua_content, scales)
+
+    if scales.ny_max_abs is not None:
+        lua_content = patch_ny_max(lua_content, scales)
+
+    if not _is_close(scales.flaps_maneuver_scale):
+        lua_content = scale_flaps_maneuver(lua_content, scales)
 
     return lua_content
 
 
-def build_variant(
-    base_mod_path: Path,
-    variant: Variant,
-    variants_root: Path,
-) -> Path:
-    """Build a single variant mod folder.
-
-    Args:
-        base_mod_path: Path to the base MiG-17 mod folder
-        variant: Variant configuration
-        variants_root: Directory to create variant folders in
-
-    Returns:
-        Path to the created variant folder
-    """
+def build_variant(base_mod_path: Path, variant: Variant, variants_root: Path) -> Path:
+    """Build a single variant mod folder."""
     variant_path = variants_root / variant.mod_dir_name
 
-    # Remove existing variant folder if present
     if variant_path.exists():
         LOGGER.info("Removing existing variant folder: %s", variant_path)
         shutil.rmtree(variant_path)
 
-    # Copy base mod to variant folder
     LOGGER.info("Copying base mod to: %s", variant_path)
     shutil.copytree(base_mod_path, variant_path)
 
-    # Modify Database/mig17f.lua
     lua_path = variant_path / "Database" / "mig17f.lua"
     if not lua_path.exists():
         LOGGER.error("Database/mig17f.lua not found in variant: %s", variant_path)
@@ -482,7 +609,6 @@ def build_variant(
     modified_content = apply_variant_modifications(lua_content, variant)
     lua_path.write_text(modified_content, encoding="utf-8")
 
-    # Modify entry.lua with unique identifiers
     entry_path = variant_path / "entry.lua"
     if entry_path.exists():
         entry_content = entry_path.read_text(encoding="utf-8")
@@ -492,29 +618,30 @@ def build_variant(
     else:
         LOGGER.warning("entry.lua not found in variant: %s", variant_path)
 
+    s = variant.scales
     LOGGER.info(
-        "Applied scales to %s: cx0=%.2f, polar=%.2f, engine_drag=%.2f, pfor=%.2f, "
-        "polar_high_aoa=%.2f, cymax=%.2f, aldop=%.2f, ny_max_abs=%s, "
-        "flaps_maneuver_scale=%.2f",
+        "Applied scales to %s: cx0=%.3f polar=%.3f polar_high_aoa=%.3f cymax=%.3f cymax_high_aoa=%.3f aldop=%.3f "
+        "engine_drag=%.3f pmax=%.3f pfor=%.3f dpdh_m_scale=%.3f dpdh_f_scale=%.3f ny_max_abs=%s flaps_maneuver_scale=%.3f",
         variant.short_name,
-        variant.scales.cx0,
-        variant.scales.polar,
-        variant.scales.engine_drag,
-        variant.scales.pfor,
-        variant.scales.polar_high_aoa,
-        variant.scales.cymax,
-        variant.scales.aldop,
-        variant.scales.ny_max_abs,
-        variant.scales.flaps_maneuver_scale,
+        s.cx0,
+        s.polar,
+        s.polar_high_aoa,
+        s.cymax,
+        s.cymax_high_aoa,
+        s.aldop,
+        s.engine_drag,
+        s.pmax,
+        s.pfor,
+        s.dpdh_m_scale,
+        s.dpdh_f_scale,
+        s.ny_max_abs,
+        s.flaps_maneuver_scale,
     )
 
     return variant_path
 
 
-def install_to_saved_games(
-    variant_path: Path,
-    dcs_saved_games: Path,
-) -> None:
+def install_to_saved_games(variant_path: Path, dcs_saved_games: Path) -> None:
     """Install a variant mod folder to DCS Saved Games."""
     mods_path = dcs_saved_games / "Mods" / "aircraft" / variant_path.name
 
@@ -527,10 +654,7 @@ def install_to_saved_games(
 
 
 def parse_args() -> argparse.Namespace:
-    """Parse command line arguments."""
-    parser = argparse.ArgumentParser(
-        description="Build MiG-17F FM variant mod folders from JSON configuration"
-    )
+    parser = argparse.ArgumentParser(description="Build MiG-17F FM variant mod folders from JSON configuration")
     parser.add_argument(
         "--base-mod-root",
         type=Path,
@@ -557,15 +681,10 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
-    """Main entry point."""
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(levelname)s: %(message)s",
-    )
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
     args = parse_args()
 
-    # Resolve paths
     json_path = args.json_file.resolve()
     variants_root = args.variants_root.resolve()
     variants_root.mkdir(parents=True, exist_ok=True)
@@ -578,10 +697,8 @@ def main() -> int:
     config = load_variant_config(json_path)
     LOGGER.info("Found %d variants to build", len(config.variants))
 
-    # Resolve base mod path
     base_mod_path = args.base_mod_root
     if not base_mod_path:
-        # Default to repo root + base_mod_dir from JSON
         repo_root = json_path.parent.parent
         base_mod_path = repo_root / config.base_mod_dir
 
@@ -594,7 +711,6 @@ def main() -> int:
     LOGGER.info("Base mod path: %s", base_mod_path)
     LOGGER.info("Variants output: %s", variants_root)
 
-    # Build each variant
     built_variants: list[Path] = []
     for variant in config.variants:
         LOGGER.info("Building variant: %s (%s)", variant.short_name, variant.variant_id)
@@ -602,7 +718,6 @@ def main() -> int:
         built_variants.append(variant_path)
         LOGGER.info("  Created: %s", variant_path)
 
-    # Optional installation to Saved Games
     if args.dcs_saved_games:
         dcs_saved_games = args.dcs_saved_games.resolve()
         if not dcs_saved_games.exists():
@@ -613,7 +728,6 @@ def main() -> int:
                 install_to_saved_games(variant_path, dcs_saved_games)
             LOGGER.info("Installation complete")
 
-    # Summary
     LOGGER.info("=" * 60)
     LOGGER.info("Build Summary")
     LOGGER.info("=" * 60)

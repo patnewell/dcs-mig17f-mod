@@ -87,7 +87,7 @@ end
 local vwv_mig17f = {
 
     Name = 'vwv_mig17f_rc3ms', -- AG
-    DisplayName = _('[VWV] MiG-17F RC3M Soft Clamp (toward RC3L)'),
+    DisplayName = _('[VWV] MiG-17F RC5 Sim-Tuned'),
 
     Picture = "mig17f.png",
     Rate = "50",
@@ -123,9 +123,9 @@ local vwv_mig17f = {
     M_nominal = 5345, -- kg (Empty Plus Full Internal Fuel)
     M_max = 6075, -- kg (Maximum Take Off Weight)
     M_fuel_max = 1140, -- kg (Internal Fuel Only)
-    H_max = 18000, -- m  (Maximum Operational Ceiling)
+    H_max = 16000, -- m  (Maximum Operational Ceiling)
     average_fuel_consumption = 0.150,
-    CAS_min = 50, -- Minimum CAS speed (m/s) (for AI)
+    CAS_min = 65, -- Minimum CAS speed (m/s) (for AI)
     V_opt = 850 / 3.6, -- Cruise speed (m/s) (for AI)
     V_take_off = 63, -- Take off speed in m/s (for AI)
     V_land = 78, -- Land speed in m/s (for AI)
@@ -133,17 +133,17 @@ local vwv_mig17f = {
     has_speedbrake = true,
     radar_can_see_ground = true,
 
-    -- nose_gear_pos = {1.42, -2.20, 0}, -- nosegear coord---6.157,	-1.26,	0 
-    nose_gear_pos = {1.42, -2.00, 0}, -- nosegear coord---6.157,	-1.26,	0 
+    -- nose_gear_pos = {1.42, -2.20, 0}, -- nosegear coord---6.157,	-1.26,	0
+    nose_gear_pos = {1.42, -2.00, 0}, -- nosegear coord---6.157,	-1.26,	0
     nose_gear_amortizer_direct_stroke = 0, -- down from nose_gear_pos !!!
-    nose_gear_amortizer_reversal_stroke = 0, -- up 
-    nose_gear_amortizer_normal_weight_stroke = 0, -- up 
+    nose_gear_amortizer_reversal_stroke = 0, -- up
+    nose_gear_amortizer_normal_weight_stroke = 0, -- up
     nose_gear_wheel_diameter = 0.754, -- in m
 
-    -- main_gear_pos = {-2.14, -2.23, 0.00}, -- main gear coords	----1.184,	-1.26,	2.714 
-    main_gear_pos = {-2.14, -2.03, 0.00}, -- main gear coords	----1.184,	-1.26,	2.714 
+    -- main_gear_pos = {-2.14, -2.23, 0.00}, -- main gear coords	----1.184,	-1.26,	2.714
+    main_gear_pos = {-2.14, -2.03, 0.00}, -- main gear coords	----1.184,	-1.26,	2.714
     main_gear_amortizer_direct_stroke = 0, --  down from main_gear_pos !!!
-    main_gear_amortizer_reversal_stroke = 0, --  up 
+    main_gear_amortizer_reversal_stroke = 0, --  up
     main_gear_amortizer_normal_weight_stroke = 0, -- down from main_gear_pos
     main_gear_wheel_diameter = 0.972, -- in m
 
@@ -158,7 +158,7 @@ local vwv_mig17f = {
     thrust_sum_max = 2650, -- thrust in kgf (26.5 kN)
     thrust_sum_ab = 3380, -- thrust in kgf (33.8 kN)
     Vy_max = 60, -- Max climb speed in m/s (for AI)
-    flaps_maneuver = 0.08, -- RC1: reduced from 0.5 to match FM4A tuning
+    flaps_maneuver = 0.00, -- RC1: reduced from 0.5 to match FM4A tuning
     Mach_max = 0.95, -- Max speed in Mach (for AI)
     range = 1300, -- Max range in km (for AI)
     RCS = 2, -- Radar Cross Section m2
@@ -166,7 +166,7 @@ local vwv_mig17f = {
     detection_range_max = 250,
     IR_emission_coeff = 0.30, -- Normal engine -- IR_emission_coeff = 1 is Su-27 without afterburner. It is reference.
     IR_emission_coeff_ab = 0.45, -- With afterburner
-    tand_gear_max = 3.73, -- XX  1.732 FA18 3.73, 
+    tand_gear_max = 3.73, -- XX  1.732 FA18 3.73,
     tanker_type = 0, -- F14=2/S33=4/ M29=0/S27=0/F15=1/ F16=1/To=0/F18=2/A10A=1/ M29K=4/F4=0/
     wing_span = 9.628, -- XX  wing spain in m
     wing_type = 0, -- 0=FIXED_WING/ 1=VARIABLE_GEOMETRY/ 2=FOLDED_WING/ 3=ARIABLE_GEOMETRY_FOLDED
@@ -199,209 +199,150 @@ local vwv_mig17f = {
             {
                 Transition = {"Close", "Open"},
                 Sequence = {
-                    {C = {{"PosType", 3}, {"Sleep", "for", 30.0}}},
-                    {C = {{"Arg", 24, "set", 1.0}}}
-                }
+                    {
+                        C = {
+                            {"PosType", 3},
+                            {"Sleep", "for", 0.0}
+                        }
+                    }
+                },
+                Flags = {"Reversible"}
             }, {
                 Transition = {"Open", "Close"},
                 Sequence = {
-                    {C = {{"PosType", 6}, {"Sleep", "for", 5.0}}},
-                    {C = {{"Arg", 24, "set", 0.0}}}
-                }
+                    {
+                        C = {
+                            {"PosType", 0},
+                            {"Sleep", "for", 0.0}
+                        }
+                    }
+                },
+                Flags = {"Reversible", "StepsBackwards"}
             }
         }
     },
 
-    engines_nozzles = {
-        [1] = {
-            pos = {-7.10, -0.06, 0.00},
-            elevation = -2.8, -- 3.7
-            diameter = 0.965, -- 0.965
-            exhaust_length_ab = 5.5,
-            exhaust_length_ab_K = 0.76,
-            smokiness_level = 0.5
-        } -- end of [1]			
-    }, -- end of engines_nozzles
-    crew_members = {
-        [1] = {
-            ejection_seat_name = 9,
-            drop_canopy_name = 41,
-            pos = {4.763, 0.862, 0},
-            drop_parachute_name = "pilot_yak52_parachute"
-        } -- end of [1]			
-    }, -- end of crew_members
-    brakeshute_name = 0,
-    is_tanker = false,
-    ---air_refuel_receptacle_pos = 	{0,	0,	0},
-    fires_pos = {
-        [1] = {-0.664, -0.496, 0},
-        [2] = {0.173, -0.307, 1.511},
-        [3] = {0.173, -0.307, -1.511},
-        [4] = {-0.82, 0.265, 2.774},
-        [5] = {-0.82, 0.265, -2.774},
-        [6] = {-0.82, 0.255, 4.274},
-        [7] = {-0.82, 0.255, -4.274},
-        [8] = {-4.899, -0.212, 0.611},
-        [9] = {-4.899, -0.212, -0.611},
-        [10] = {-0.896, 1.118, 0},
-        [11] = {0.445, -0.436, 0}
-    }, -- end of fires_pos
+    -- countermeasures = {
+    --     ECM = "Abstract ECM",
+    --     chaff = 20,
+    --     flare = 20
+    -- },
 
---    effects_presets = {
---        {
---            effect = "OVERWING_VAPOR",
---            file = current_mod_path .. "/Effects/VSN_F4E_overwingVapor.lua"
---        }
---    },
-
-    passivCounterm = {
-        CMDS_Edit = false,
-        SingleChargeTotal = 0,
-        chaff = {default = 0},
-        flare = {default = 0}
+    Sensors = {
+        RWR = "Abstract RWR"
     },
 
-    CanopyGeometry = {
-        azimuth = {-145.0, 145.0}, -- pilot view horizontal (AI)
-        elevation = {-50.0, 90.0} -- pilot view vertical (AI)
-    },
-
-    Sensors = {},
-
-    Failures = {
-        {
-            id = 'asc',
-            label = _('ASC'),
-            enable = false,
-            hh = 0,
-            mm = 0,
-            mmint = 1,
-            prob = 100
-        }, {
-            id = 'autopilot',
-            label = _('AUTOPILOT'),
-            enable = false,
-            hh = 0,
-            mm = 0,
-            mmint = 1,
-            prob = 100
-        }, {
-            id = 'hydro',
-            label = _('HYDRO'),
-            enable = false,
-            hh = 0,
-            mm = 0,
-            mmint = 1,
-            prob = 100
-        }, {
-            id = 'l_engine',
-            label = _('L-ENGINE'),
-            enable = false,
-            hh = 0,
-            mm = 0,
-            mmint = 1,
-            prob = 100
-        }, {
-            id = 'r_engine',
-            label = _('R-ENGINE'),
-            enable = false,
-            hh = 0,
-            mm = 0,
-            mmint = 1,
-            prob = 100
-        }, {
-            id = 'radar',
-            label = _('RADAR'),
-            enable = false,
-            hh = 0,
-            mm = 0,
-            mmint = 1,
-            prob = 100
-        },
-        -- { id = 'eos',  		label = _('EOS'), 		enable = false, hh = 0, mm = 0, mmint = 1, prob = 100 },
-        -- { id = 'helmet',  	label = _('HELMET'), 	enable = false, hh = 0, mm = 0, mmint = 1, prob = 100 },
-        {
-            id = 'mlws',
-            label = _('MLWS'),
-            enable = false,
-            hh = 0,
-            mm = 0,
-            mmint = 1,
-            prob = 100
-        }, {
-            id = 'rws',
-            label = _('RWS'),
-            enable = false,
-            hh = 0,
-            mm = 0,
-            mmint = 1,
-            prob = 100
-        }, {
-            id = 'ecm',
-            label = _('ECM'),
-            enable = false,
-            hh = 0,
-            mm = 0,
-            mmint = 1,
-            prob = 100
-        }, {
-            id = 'hud',
-            label = _('HUD'),
-            enable = false,
-            hh = 0,
-            mm = 0,
-            mmint = 1,
-            prob = 100
-        }, {
-            id = 'mfd',
-            label = _('MFD'),
-            enable = false,
-            hh = 0,
-            mm = 0,
-            mmint = 1,
-            prob = 100
-        }
-    },
     HumanRadio = {
-        frequency = 127.5, -- Radio Freq
+        frequency = 251.0,
         editable = true,
-        minFrequency = 100.000,
-        maxFrequency = 156.000,
+        minFrequency = 225.0,
+        maxFrequency = 400.0,
         modulation = MODULATION_AM
     },
 
-    Guns = {
-        n37({muzzle_pos = {2.00, -0.55, 0.00}, effect_arg_number = 350}),
-        nr23({muzzle_pos = {1.85, -0.65, -0.35}, effect_arg_number = 433}),
-        nr23({muzzle_pos = {1.95, -0.60, 0.35}, effect_arg_number = 432})
-    },
-    -------------------------------------------------------------------------------
-    Pylons = {
-        pylon(1, 0, 1.2, 2.50, -1.60,
-            {use_full_connector_position = false, connector = "pylon_1"}, {
-                { CLSID = "FAB_50" },
-                { CLSID = "FAB_100M" },
-                { CLSID = "PTB400_MIG15" },
-        }),
-        pylon(2, 0, 1.2, 2.40, -1.75,
-            {use_full_connector_position = false, connector = "pylon_2"}, {
-                { CLSID = "FAB_50" },
-                { CLSID = "FAB_100M" },
-                { CLSID = "PTB400_MIG15" },
-        }),
+    panelRadio = {
+        [1] = {
+            name = _("R-800L1"),
+            range = {
+                min = 225.0,
+                max = 399.0
+            },
+            channels = {
+                [1] = {name = _("Channel 1"), default = 251.0, modulation = MODULATION_AM},
+                [2] = {name = _("Channel 2"), default = 252.0, modulation = MODULATION_AM},
+                [3] = {name = _("Channel 3"), default = 253.0, modulation = MODULATION_AM},
+                [4] = {name = _("Channel 4"), default = 254.0, modulation = MODULATION_AM},
+                [5] = {name = _("Channel 5"), default = 255.0, modulation = MODULATION_AM},
+                [6] = {name = _("Channel 6"), default = 256.0, modulation = MODULATION_AM},
+                [7] = {name = _("Channel 7"), default = 257.0, modulation = MODULATION_AM},
+                [8] = {name = _("Channel 8"), default = 258.0, modulation = MODULATION_AM},
+                [9] = {name = _("Channel 9"), default = 259.0, modulation = MODULATION_AM},
+                [10] = {name = _("Channel 10"), default = 260.0, modulation = MODULATION_AM},
+                [11] = {name = _("Channel 11"), default = 261.0, modulation = MODULATION_AM},
+                [12] = {name = _("Channel 12"), default = 262.0, modulation = MODULATION_AM},
+                [13] = {name = _("Channel 13"), default = 263.0, modulation = MODULATION_AM},
+                [14] = {name = _("Channel 14"), default = 264.0, modulation = MODULATION_AM},
+                [15] = {name = _("Channel 15"), default = 265.0, modulation = MODULATION_AM},
+                [16] = {name = _("Channel 16"), default = 266.0, modulation = MODULATION_AM},
+                [17] = {name = _("Channel 17"), default = 267.0, modulation = MODULATION_AM},
+                [18] = {name = _("Channel 18"), default = 268.0, modulation = MODULATION_AM},
+                [19] = {name = _("Channel 19"), default = 269.0, modulation = MODULATION_AM},
+                [20] = {name = _("Channel 20"), default = 270.0, modulation = MODULATION_AM}
+            }
+        }
     },
 
-    ------------------------------------------------------------------------------
+    guns = {
+        n37({muzzle_pos = {3.20, -0.25, 0.40}}),
+        nr23({muzzle_pos = {3.08, -0.25, -0.50}}),
+        nr23({muzzle_pos = {3.08, -0.25, 0.50}})
+    },
+
+    Pylons = {
+        pylon(1, 0, -0.35, -0.45, -2.20, {
+            use_full_connector_position = true,
+            arg = 309,
+            arg_value = 0,
+            connector = "Pylon1"
+        }),
+        pylon(2, 0, -0.35, -0.45, 2.20, {
+            use_full_connector_position = true,
+            arg = 310,
+            arg_value = 0,
+            connector = "Pylon2"
+        }),
+        pylon(3, 0, -1.15, -0.45, -2.95, {
+            use_full_connector_position = true,
+            arg = 311,
+            arg_value = 0,
+            connector = "Pylon3"
+        }),
+        pylon(4, 0, -1.15, -0.45, 2.95, {
+            use_full_connector_position = true,
+            arg = 312,
+            arg_value = 0,
+            connector = "Pylon4"
+        }),
+        pylon(5, 0, -1.80, -0.45, -3.70, {
+            use_full_connector_position = true,
+            arg = 313,
+            arg_value = 0,
+            connector = "Pylon5"
+        }),
+        pylon(6, 0, -1.80, -0.45, 3.70, {
+            use_full_connector_position = true,
+            arg = 314,
+            arg_value = 0,
+            connector = "Pylon6"
+        }),
+        pylon(7, 0, -2.05, -0.45, -4.45, {
+            use_full_connector_position = true,
+            arg = 315,
+            arg_value = 0,
+            connector = "Pylon7"
+        }),
+        pylon(8, 0, -2.05, -0.45, 4.45, {
+            use_full_connector_position = true,
+            arg = 316,
+            arg_value = 0,
+            connector = "Pylon8"
+        }),
+        pylon(9, 0, -2.30, -0.45, 0.00, {
+            use_full_connector_position = true,
+            arg = 317,
+            arg_value = 0,
+            connector = "Pylon9"
+        })
+    },
 
     Tasks = {
         aircraft_task(CAP),
         aircraft_task(Escort),
         aircraft_task(FighterSweep),
         aircraft_task(Intercept),
-        aircraft_task(GroundAttack),
-        aircraft_task(CAS),
-        aircraft_task(RunwayAttack),
+        aircraft_task(Reconnaissance)
     },
+
     DefaultTask = aircraft_task(CAP),
 
     SFM_Data = {
@@ -419,23 +360,23 @@ local vwv_mig17f = {
                         cy_flap =       0.35, -- coefficient, normal force, lift, flaps
                         cx_brk  =       0.026, -- coefficient, drag, breaks
                         -- RC1: FM4A tuning applied (polar_high_aoa=3.0 for M 0.2-0.8, cymax=0.70, aldop=0.70)
-                        table_data =
-                        {       --  M    Cx0*           Cya*            B2                      B4                      Omxmax Aldop*           Cymax*
-                                { 0.0,  0.0097  ,       0.0715 ,       0.043   ,       0.006   ,       0.460   ,       8.8   ,      0.52},
-                                { 0.1,  0.0097  ,       0.0715 ,       0.043   ,       0.006   ,       0.460   ,       8.8   ,      0.52},
-                                { 0.2,  0.0095  ,       0.0710 ,       0.043   ,       0.092   ,       0.860   ,       8.7   ,      0.51},
-                                { 0.3,  0.0091  ,       0.0718 ,       0.044   ,       0.106   ,       1.200   ,       8.6   ,      0.51},
-                                { 0.4,  0.0089  ,       0.0735 ,       0.045   ,       0.145   ,       1.580   ,       8.3   ,      0.50},
-                                { 0.5,  0.0089  ,       0.0765 ,       0.047   ,       0.172   ,       1.780   ,       8.2   ,      0.50},
-                                { 0.6,  0.0091  ,       0.0810 ,       0.049   ,       0.224   ,       1.620   ,       7.8   ,      0.47},
-                                { 0.7,  0.0094  ,       0.0855 ,       0.052   ,       0.370   ,       1.050   ,       7.4   ,      0.46},
-                                { 0.8,  0.0104  ,       0.0895 ,       0.056   ,       0.620   ,       0.520   ,       6.8   ,      0.43},
-                                { 0.86, 0.0115  ,       0.0860 ,       0.064   ,       0.078   ,       0.380   ,       6.4    ,      0.41},
-                                { 0.9,  0.0153  ,       0.0805 ,       0.074   ,       0.141   ,       0.320   ,       5.8    ,      0.38},
-                                { 0.94, 0.0237  ,       0.0775 ,       0.091   ,       0.216   ,       0.280   ,       5.3    ,      0.36},
-                                { 1.0,  0.0348  ,       0.0765 ,       0.114   ,       0.300   ,       0.230   ,       4.5    ,      0.34},
-                                { 1.04, 0.0366  ,       0.0770 ,       0.135   ,       0.402   ,       0.210   ,       4.2    ,      0.32},
-                                { 1.2,  0.0375  ,       0.0785 ,       0.153   ,       0.534   ,       0.190   ,       3.8    ,      0.30},
+                                    table_data =
+                        {       --  M    Cx0*    Cya*    B2      B4      Omxmax   Aldop   Cymax
+                                { 0.0,  0.0110  ,       0.0715  ,   0.060,   0.150,   0.460,  8.0,   0.50},
+                                { 0.1,  0.0110  ,       0.0715  ,   0.060,   0.150,   0.460,  8.0,   0.50},
+                                { 0.2,  0.0098  ,       0.0710  ,   0.050,   0.120,   0.860,  8.2,   0.50},
+                                { 0.3,  0.0094  ,       0.0718  ,   0.052,   0.140,   1.200,  8.1,   0.50},
+                                { 0.4,  0.0092  ,       0.0735  ,   0.055,   0.170,   1.580,  7.9,   0.49},
+                                { 0.5,  0.0092  ,       0.0765  ,   0.058,   0.200,   1.780,  7.8,   0.48},
+                                { 0.6,  0.0095  ,       0.0810  ,   0.065,   0.250,   1.620,  7.5,   0.46},
+                                { 0.7,  0.0098  ,       0.0855  ,   0.070,   0.420,   1.050,  7.1,   0.44},
+                                { 0.8,  0.0108  ,       0.0895  ,   0.080,   0.700,   0.520,  6.7,   0.42},
+                                { 0.86, 0.0115  ,       0.0860  ,   0.070,   0.300,   0.380,  6.4,   0.41},
+                                { 0.9,  0.0153  ,       0.0805  ,   0.074,   0.141,   0.320,  5.8,   0.38},
+                                { 0.94, 0.0237  ,       0.0775  ,   0.091,   0.216,   0.280,  5.3,   0.36},
+                                { 1.0,  0.0348  ,       0.0765  ,   0.114,   0.300,   0.230,  4.5,   0.34},
+                                { 1.04, 0.0366  ,       0.0770  ,   0.135,   0.402,   0.210,  4.2,   0.32},
+                                { 1.2,  0.0375  ,       0.0785  ,   0.153,   0.534,   0.190,  3.8,   0.30},
                         }, -- end of table_data
                         -- M - Mach number
                         -- Cx0 - Coefficient, drag, profile, of the airplane
@@ -458,12 +399,12 @@ local vwv_mig17f = {
                         MaksRUD =       1, -- Military power state of the РУД
                         ForsRUD =       1, -- Afterburner state of the РУД
                         type    =       "TurboJet",
-                        hMaxEng =       19, -- Max altitude for safe engine operation in km
-                        dcx_eng =       0.0080, -- Engine drag coeficient
+                        hMaxEng =       16, -- Max altitude for safe engine operation in km
+                        dcx_eng =       0.0120, -- Engine drag coeficient
                         cemax   =       1.24, -- not used for fuel calulation , only for AI routines to check flight time ( fuel calculation algorithm is built in )
                         cefor   =       2.56, -- not used for fuel calulation , only for AI routines to check flight time ( fuel calculation algorithm is built in )
-                        dpdh_m  =       1340, --  altitude coefficient for max thrust
-                        dpdh_f  =       1340, --  altitude coefficient for AB thrust
+                        dpdh_m  =       1800, --  altitude coefficient for max thrust
+                        dpdh_f  =       1800, --  altitude coefficient for AB thrust
                         table_data =
                         {               --   M                  Pmax             Pfor
                                 { 0.0   ,       26500   ,       33800   },
@@ -481,6 +422,7 @@ local vwv_mig17f = {
                                 { 1     ,       24800   ,       32500   },
                                 { 1.04  ,       25100   ,       32700   },
                                 { 1.1   ,       26200   ,       33500   },
+							{ 2.0 , 100   , 100   },
                         }, -- end of table_data
                         -- M - Mach number
                         -- Pmax - Engine thrust at military power
@@ -505,8 +447,8 @@ local vwv_mig17f = {
 
 		-- ["FUSELAGE_BOTTOM"]		= {critical_damage = 8, args =  {152}},
 		["FUSELAGE_CENTR_TOP"]	= {critical_damage = 8, args =  {151}},
-		-- ["FUSELAGE_CENTR_L"]	= {critical_damage = 4, args =  {154}},
-		-- ["FUSELAGE_CENTR_R"]	= {critical_damage = 4, args =  {153}},
+		-- ["FUSELAGE_CENTR_L"]		= {critical_damage = 4, args =  {154}},
+		-- ["FUSELAGE_CENTR_R"]		= {critical_damage = 4, args =  {153}},
 
 		["FIN_TOP"]				= {critical_damage = 4, args =  {244}},
 		["RUDDER"]				= {critical_damage = 2, args =  {247}},

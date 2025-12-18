@@ -878,7 +878,7 @@ def cmd_quick_bfm_setup(args: argparse.Namespace) -> int:
     built_variants: list[Path] = []
     for variant in json_config.variants:
         LOGGER.info("Building variant: %s (%s)", variant.short_name, variant.variant_id)
-        variant_path = builder.build_variant(base_mod_path, variant, variants_root)
+        variant_path = builder.build_variant(base_mod_path, variant, variants_root, flight_model_lua="Database/mig17f.lua", entry_lua="entry.lua")
         built_variants.append(variant_path)
 
     # Install variants to DCS
